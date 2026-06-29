@@ -1,0 +1,37 @@
+:root {
+  --bg: #0f1419; --panel: #161c24; --line: #232c38;
+  --ink: #e7edf3; --muted: #8a99a8; --accent: #2bb5a0; --flag: #e8453c;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+.app-shell__bar { display: flex; align-items: center; gap: 16px;
+  padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.app-shell__bar h1 { font-size: 15px; margin: 0; letter-spacing: .2px; }
+.app-shell__body { display: grid; grid-template-columns: 360px 1fr; height: calc(100vh - 53px); }
+.app-shell__side { border-right: 1px solid var(--line); overflow: auto; padding: 16px; }
+.app-shell__main { overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.upload { border: 1.5px dashed var(--line); border-radius: 12px; padding: 22px;
+  display: flex; flex-direction: column; gap: 6px; cursor: pointer; transition: border-color .15s; }
+.upload:hover { border-color: var(--accent); }
+.upload span { color: var(--muted); font-size: 12px; }
+.teamlist__filter, .search__input, .teamlist input { width: 100%; background: var(--bg);
+  border: 1px solid var(--line); color: var(--ink); border-radius: 8px; padding: 8px 10px; }
+.teamlist__ward h3 { display: flex; justify-content: space-between; font-size: 12px;
+  text-transform: uppercase; color: var(--muted); margin: 18px 0 6px; }
+.teamlist li { list-style: none; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.teamlist li.is-active { background: rgba(43,181,160,.12); outline: 1px solid var(--accent); }
+.teamlist__code { font-weight: 600; }
+.teamlist__meta { display: block; color: var(--muted); font-size: 12px; }
+.weeks { float: right; color: var(--accent); font-size: 11px; }
+.period__trigger { background: var(--bg); border: 1px solid var(--line); color: var(--ink);
+  border-radius: 10px; padding: 6px 12px; display: flex; flex-direction: column; cursor: pointer; }
+.period__range { color: var(--muted); font-size: 11px; }
+.flagtable { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.flagtable__head { display: flex; justify-content: space-between; padding: 12px 16px;
+  background: var(--panel); border-bottom: 1px solid var(--line); }
+.flagtable__count { color: var(--flag); font-weight: 600; }
+.flagtable__scroll { height: 280px; overflow: auto; }
+.flagtable__row { position: absolute; width: 100%; display: flex; gap: 12px; align-items: center;
+  padding: 8px 16px; border-bottom: 1px solid var(--line); }
+.flagtable__badge { background: var(--flag); color: #fff; border-radius: 6px; padding: 2px 6px; font-size: 11px; }

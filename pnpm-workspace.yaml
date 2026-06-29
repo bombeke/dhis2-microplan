@@ -1,0 +1,42 @@
+# pnpm 11+ reads project settings from here (camelCase keys), NOT from the
+# package.json "pnpm" field and NOT from kebab-case .npmrc keys for these
+# settings. This is a single-package repo, so there's no `packages:` list —
+# the file exists purely to carry the settings below.
+
+# --- node_modules layout ----------------------------------------------------
+# @dhis2/cli-app-scripts bootstraps an app-shell (.d2/shell) whose entry imports
+# packages (typeface-roboto, react, @dhis2/app-shell) directly from the project
+# root. That tooling assumes a flat, npm/yarn-style node_modules. Flattening the
+# tree is the reliable way to run the DHIS2 App Platform under pnpm — without it
+# the Vite/Rollup build fails with "Rollup failed to resolve typeface-roboto".
+shamefullyHoist: true
+
+# --- engine + install behaviour --------------------------------------------
+engineStrict: true            # fail fast if Node/pnpm don't match engines field
+preferFrozenLockfile: true    # deterministic, faster CI installs
+
+# --- peer dependencies ------------------------------------------------------
+# Allow DHIS2's React-18-era peer ranges without warnings/failures.
+peerDependencyRules:
+  allowedVersions:
+    react: '18'
+    react-dom: '18'
+  ignoreMissing:
+    - '@babel/*'
+    - webpack
+
+# --- build-script approvals -------------------------------------------------
+# pnpm 10+ blocks lifecycle build scripts by default. Approve only the packages
+# that legitimately run post-install scripts. Confirmed against the actual
+# install for @dhis2/cli-app-scripts v12.11.
+onlyBuiltDependencies:
+  - esbuild
+  - core-js
+  - core-js-pure
+  - '@dhis2/cli-helpers-engine'
+
+allowBuilds:
+  '@dhis2/cli-helpers-engine': true
+  core-js: true
+  core-js-pure: true
+  esbuild: true

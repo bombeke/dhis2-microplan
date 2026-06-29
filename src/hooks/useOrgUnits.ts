@@ -1,0 +1,123 @@
+import { useDataEngine } from '@dhis2/app-runtime';
+import { useQuery } from '@tanstack/react-query';
+
+/**
+ * Retrieving 50k+ wards by State -> Ward -> facility without melting the
+ * browser: we NEVER fetch the whole tree. Each level is fetched on demand,
+ * keyed and cached by parent. The UI lazily expands nodes, and the search
+ * worker (FlexSearch) handles the "jump straight to a ward" case so users
+ * don't have to drill manually.
+ */
+
+export interface OrgUnitNode {
+  id: string;
+  displayName: string;
+  level: number;
+  leaf: boolean;
+  childCount: number;
+  geometryType?: string;
+}
+
+const fields =
+  'id,displayName,level,leaf,children::size,geometry[type]';
+
+export function useOrgUnitChildren(parentId: string | null, enabled = true) {
+  const engine = useDataEngine();
+  return useQuery({
+    queryKey: ['ou-children', parentId],
+    enabled: enabled && !!parentId,
+    staleTime: 5 * 60_000,
+    queryFn: async (): Promise<OrgUnitNode[]> => {
+      const data: any = await engine.query({
+        ou: {
+          resource: 'organisationUnits',
+          params: {
+            filter: [`parent.id:eq:${parentId}`],
+            fields,
+            order: 'displayName:asc',
+            paging: 'false',
+          },
+        },
+      });
+      return (data.ou.organisationUnits ?? []).map((o: any) => ({
+        id: o.id,
+        displayName: o.displayName,
+        level: o.level,
+        leaf: o.leaf,
+        childCount: o['children'] ?? o.childCount ?? 0,
+        geometryType: o.geometry?.type,
+      }));
+    },
+  });
+}
+
+/** Top-level (national) roots for the tree. */
+export function useOrgUnitRoots() {
+  const engine = useDataEngine();
+  return useQuery({
+    queryKey: ['ou-roots'],
+    staleTime: 30 * 60_000,
+    queryFn: async (): Promise<OrgUnitNode[]> => {
+      const data: any = await engine.query({
+        me: { resource: 'me', params: { fields: 'organisationUnits[id,level]' } },
+      });
+      const roots = data.me.organisationUnits ?? [];
+      const detail: any = await engine.query({
+        ou: {
+          resource: 'organisationUnits',
+          params: {
+            filter: [`id:in:[${roots.map((r: any) => r.id).join(',')}]`],
+            fields,
+            paging: 'false',
+          },
+        },
+      });
+      return (detail.ou.organisationUnits ?? []).map((o: any) => ({
+        id: o.id,
+        displayName: o.displayName,
+        level: o.level,
+        leaf: o.leaf,
+        childCount: o['children'] ?? 0,
+        geometryType: o.geometry?.type,
+      }));
+    },
+  });
+}
+
+/**
+ * Bulk-load every ward (level N) once for the search index, paged server-side
+ * so we stream rather than block. Yields batches to the caller.
+ */
+export async function* streamWards(
+  engine: ReturnType<typeof useDataEngine>,
+  wardLevel: number,
+  pageSize = 1000
+): AsyncGenerator<OrgUnitNode[]> {
+  let page = 1;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const data: any = await engine.query({
+      ou: {
+        resource: 'organisationUnits',
+        params: {
+          filter: [`level:eq:${wardLevel}`],
+          fields: 'id,displayName,level,parent[displayName]',
+          order: 'displayName:asc',
+          pageSize,
+          page,
+        },
+      },
+    });
+    const list = data.ou.organisationUnits ?? [];
+    if (list.length === 0) break;
+    yield list.map((o: any) => ({
+      id: o.id,
+      displayName: o.displayName,
+      level: o.level,
+      leaf: false,
+      childCount: 0,
+    }));
+    if (list.length < pageSize) break;
+    page += 1;
+  }
+}
