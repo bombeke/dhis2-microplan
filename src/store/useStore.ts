@@ -6,6 +6,11 @@ import type {
   FlagResult,
   GeoSourceConfig,
 } from '../types';
+import {
+  DEFAULT_BASEMAP_ID,
+  DEFAULT_OVERLAYS,
+  type OverlayToggles,
+} from '../lib/basemaps';
 
 interface AppState {
   // ingestion
@@ -35,7 +40,38 @@ interface AppState {
   setGeoSource: (c: GeoSourceConfig) => void;
   period: string;
   setPeriod: (p: string) => void;
+
+  // map filters (drive which uploaded microplans render on the map)
+  mapFilters: MapFilters;
+  setMapFilter: <K extends keyof MapFilters>(key: K, value: MapFilters[K]) => void;
+  resetMapFilters: () => void;
+
+  // which uploaded microplans are active on the map
+  activeMicroplanIds: string[];
+  setActiveMicroplanIds: (ids: string[]) => void;
+  toggleMicroplan: (id: string) => void;
+
+  // map layer choices (basemap + overlay toggles), like the DHIS2 Maps app
+  basemapId: string;
+  setBasemapId: (id: string) => void;
+  overlays: OverlayToggles;
+  toggleOverlay: (key: keyof OverlayToggles) => void;
 }
+
+/** Filters applied to the uploaded-microplan catalogue on the map page. */
+export interface MapFilters {
+  uploadedById: string | null; // by user
+  period: string | null; // by month/period
+  level: number | null; // by org unit level
+  orgUnitId: string | null; // by organisation unit
+}
+
+const EMPTY_FILTERS: MapFilters = {
+  uploadedById: null,
+  period: null,
+  level: null,
+  orgUnitId: null,
+};
 
 export const useStore = create<AppState>((set) => ({
   teamPlans: [],
@@ -64,4 +100,24 @@ export const useStore = create<AppState>((set) => ({
   setGeoSource: (geoSource) => set({ geoSource }),
   period: 'THIS_MONTH',
   setPeriod: (period) => set({ period }),
+
+  mapFilters: EMPTY_FILTERS,
+  setMapFilter: (key, value) =>
+    set((s) => ({ mapFilters: { ...s.mapFilters, [key]: value } })),
+  resetMapFilters: () => set({ mapFilters: EMPTY_FILTERS }),
+
+  activeMicroplanIds: [],
+  setActiveMicroplanIds: (activeMicroplanIds) => set({ activeMicroplanIds }),
+  toggleMicroplan: (id) =>
+    set((s) => ({
+      activeMicroplanIds: s.activeMicroplanIds.includes(id)
+        ? s.activeMicroplanIds.filter((x) => x !== id)
+        : [...s.activeMicroplanIds, id],
+    })),
+
+  basemapId: DEFAULT_BASEMAP_ID,
+  setBasemapId: (basemapId) => set({ basemapId }),
+  overlays: DEFAULT_OVERLAYS,
+  toggleOverlay: (key) =>
+    set((s) => ({ overlays: { ...s.overlays, [key]: !s.overlays[key] } })),
 }));

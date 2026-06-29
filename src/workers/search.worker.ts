@@ -68,11 +68,13 @@ const api = {
     const d = await getDb();
     const exported: Record<string, string> = {};
     await new Promise<void>((resolve) => {
-      index.export((key, data) => {
-        exported[key as string] = data as string;
-        // FlexSearch calls this once per shard; resolve on the final tick.
-        queueMicrotask(resolve);
-      });
+      (index.export as unknown as (cb: (key: unknown, data: unknown) => void) => void)(
+        (key, data) => {
+          exported[String(key)] = data as string;
+          // FlexSearch calls this once per shard; resolve on the final tick.
+          queueMicrotask(resolve);
+        }
+      );
     });
     const tx = d.transaction([STORE, META], 'readwrite');
     await tx.objectStore(STORE).put(exported, 'flexsearch');
@@ -90,7 +92,7 @@ const api = {
     const docEntries = (await d.get(STORE, 'docs')) as [string, IndexedDoc][];
     if (!exported || !docEntries) return false;
     for (const [key, data] of Object.entries(exported)) {
-      await index.import(key, data);
+      await (index.import as unknown as (key: string, data: string) => Promise<void>)(key, data);
     }
     docs = new Map(docEntries);
     return true;

@@ -19,7 +19,7 @@
   "dependencies": {
     "@dhis2/analytics": "^29.5.4",
     "@dhis2/app-runtime": "^3.17.3",
-    "@dhis2/maps-gl": "^4.2.8",
+    "@dhis2/maps-gl": "^4.3.0",
     "@dhis2/ui": "^10.16.3",
     "@tanstack/react-query": "^5.59.0",
     "@tanstack/react-virtual": "^3.10.8",
@@ -38,7 +38,7 @@
     "react-dom": "^18.3.1",
     "supercluster": "^8.0.1",
     "tailwind-merge": "^2.5.4",
-    "xlsx": "^0.18.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
