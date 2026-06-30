@@ -13,6 +13,7 @@ export interface MicroplanRow {
   week2: string;
   week3: string;
   week4: string;
+  week5: string;
 }
 
 /** Normalised settlement record after matching to a geometry source. */
@@ -34,7 +35,7 @@ export interface TeamPlan {
   ward: string;
   state: string;
   facilityName: string;
-  // settlementId -> set of week numbers (1..4) the team visits it
+  // settlementId -> set of week numbers (1..5) in which the team visits it
   visits: Record<string, number[]>;
 }
 

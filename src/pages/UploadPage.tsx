@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDataEngine } from '@dhis2/app-runtime';
-import { parseUpload, buildTeamPlans } from '../lib/ingest';
+import { parseUpload, buildTeamPlans, splitSettlementCell } from '../lib/ingest';
 import { makeProvider } from '../lib/geoSources';
 import {
   useCurrentUser,
@@ -165,15 +165,21 @@ const PreviewTable: React.FC<{ rows: MicroplanRow[] }> = ({ rows }) => (
     <table>
       <thead>
         <tr>
-          <th>Settlement</th><th>Team</th><th>Ward</th><th>Facility</th><th>Wks</th>
+          <th>Settlement</th><th>Team</th><th>Ward</th><th>Facility</th><th>Wks (settlements)</th>
         </tr>
       </thead>
       <tbody>
         {rows.slice(0, 8).map((r, i) => {
-          const wks = [r.week1, r.week2, r.week3, r.week4]
-            .map((w, idx) => (w && !['0', 'no', '-'].includes(w.toLowerCase()) ? idx + 1 : null))
+          const cells: [number, string][] = [
+            [1, r.week1], [2, r.week2], [3, r.week3], [4, r.week4], [5, r.week5],
+          ];
+          const wks = cells
+            .map(([n, cell]) => {
+              const count = splitSettlementCell(cell).length;
+              return count ? `W${n}:${count}` : null;
+            })
             .filter(Boolean)
-            .join(',');
+            .join(' · ');
           return (
             <tr key={i}>
               <td>{r.settlement}</td><td>{r.teamCode}</td><td>{r.ward}</td>

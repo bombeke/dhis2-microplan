@@ -10,7 +10,7 @@ import { FilesPage } from './FilesPage';
 /**
  * Top-level shell: a slim nav bar plus a hash-routed page area.
  *
- *  #/map     — filterable coverage map (DHIS2 maps-gl layers)
+ *  #/map     — filterable coverage map (maplibre-gl layers)
  *  #/upload  — dedicated upload page (parses + saves to dataStore)
  *  #/files   — catalogue of uploaded microplans
  *

@@ -10,6 +10,7 @@ import { LayerControl } from '../components/LayerControl';
 import { getBasemap } from '../lib/basemaps';
 import { fetchEnrollmentPoints, fetchEventPoints } from '../lib/dhis2Data';
 import { flagPoints, assignedByTeamFrom } from '../lib/flagging';
+import { useOrgUnitHierarchy } from '../hooks/useOrgUnits';
 import type { Settlement } from '../types';
 
 /**
@@ -17,16 +18,27 @@ import type { Settlement } from '../types';
  * resulting microplans are loaded in full and, for each, we pull DHIS2
  * tracker/event points for its org unit + period and flag them against the
  * microplan's own assigned settlements. Everything is handed to Dhis2Map,
- * which renders one set of DHIS2 maps-gl layers per microplan.
+ * which renders one set of maplibre-gl layers per microplan.
  */
 export const MapPage: React.FC<{ program?: string }> = ({ program }) => {
   const engine = useDataEngine();
   const { data: index = [] } = useMicroplanIndex();
   const { mapFilters, activeMicroplanIds, setActiveMicroplanIds, basemapId, overlays } =
     useStore();
+  const { data: hierarchy = [] } = useOrgUnitHierarchy();
+
+  // id -> path map from the cached hierarchy, for descendant-aware org filtering
+  const orgUnitPaths = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const o of hierarchy) m.set(o.id, o.path);
+    return m;
+  }, [hierarchy]);
 
   // catalogue after filters
-  const filtered = useMemo(() => filterIndex(index, mapFilters), [index, mapFilters]);
+  const filtered = useMemo(
+    () => filterIndex(index, mapFilters, orgUnitPaths),
+    [index, mapFilters, orgUnitPaths]
+  );
 
   // default: when nothing explicitly toggled, show everything that passes filters
   useEffect(() => {
@@ -101,6 +113,7 @@ export const MapPage: React.FC<{ program?: string }> = ({ program }) => {
           microplans={microplans}
           basemap={getBasemap(basemapId)}
           overlays={overlays}
+          loading={loading}
         />
         <LayerControl />
         {loading && <div className="mapwrap__loading">Loading microplan layers…</div>}

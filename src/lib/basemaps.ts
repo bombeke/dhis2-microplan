@@ -1,7 +1,7 @@
 /**
  * Basemap registry — mirrors the default basemap choices offered by the DHIS2
  * Maps web app (OSM, OSM Light, OSM Dark, Bing-style imagery via Esri, plus a
- * "none" option). Each entry maps to a `tileLayer` config the @dhis2/maps-gl
+ * "none" option). Each entry maps to a raster tile config the maplibre-gl
  * engine understands. Deployments can extend this list (e.g. with org-specific
  * WMS layers) without touching the map component.
  */

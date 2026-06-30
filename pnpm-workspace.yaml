@@ -40,8 +40,3 @@ allowBuilds:
   core-js: true
   core-js-pure: true
   esbuild: true
-
-# Allow the @dhis2/maps-gl bump past pnpm's release-age gate (added when the
-# Map page moved to the DHIS2 maps-gl rendering engine).
-minimumReleaseAgeExclude:
-  - '@dhis2/maps-gl@4.3.0'

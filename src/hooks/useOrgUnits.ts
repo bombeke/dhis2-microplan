@@ -121,3 +121,72 @@ export async function* streamWards(
     page += 1;
   }
 }
+
+/**
+ * Whole-hierarchy org-unit cache.
+ *
+ * Fetches the entire org-unit tree once (flat, with parent + path + level) and
+ * caches it aggressively so the FilterMap org-unit selector never re-hits the
+ * server within the cache window. `staleTime` + `gcTime` are set to 10 minutes,
+ * satisfying "no server refetching for at least 10 minutes". Pagination streams
+ * the full set; for very large hierarchies this is one upfront cost, after which
+ * search/selection is entirely client-side (see useFlexFilter / SearchableSelect).
+ */
+export interface FlatOrgUnit {
+  id: string;
+  name: string;
+  level: number;
+  path: string; // /root/.../id
+  parentId: string | null;
+}
+
+const TEN_MIN = 10 * 60_000;
+
+async function fetchAllOrgUnits(
+  engine: ReturnType<typeof useDataEngine>,
+  pageSize = 2000
+): Promise<FlatOrgUnit[]> {
+  const out: FlatOrgUnit[] = [];
+  let page = 1;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const data: any = await engine.query({
+      ou: {
+        resource: 'organisationUnits',
+        params: {
+          fields: 'id,displayName,level,path,parent[id]',
+          order: 'level:asc,displayName:asc',
+          pageSize,
+          page,
+        },
+      },
+    });
+    const list = data.ou.organisationUnits ?? [];
+    for (const o of list) {
+      out.push({
+        id: o.id,
+        name: o.displayName,
+        level: o.level,
+        path: o.path ?? '',
+        parentId: o.parent?.id ?? null,
+      });
+    }
+    const pager = data.ou.pager;
+    if (!pager || page >= pager.pageCount || list.length < pageSize) break;
+    page += 1;
+  }
+  return out;
+}
+
+export function useOrgUnitHierarchy(enabled = true) {
+  const engine = useDataEngine();
+  return useQuery<FlatOrgUnit[]>({
+    queryKey: ['ou-hierarchy-all'],
+    enabled,
+    staleTime: TEN_MIN, // do not consider stale (no refetch) for 10 min
+    gcTime: TEN_MIN * 2, // keep in cache well beyond that
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    queryFn: () => fetchAllOrgUnits(engine),
+  });
+}

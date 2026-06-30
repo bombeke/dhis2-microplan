@@ -1,24 +1,25 @@
-import React, { useEffect, useRef } from 'react';
-// @dhis2/maps-gl is the DHIS2 Maps rendering engine (wrapper over Mapbox/MapLibre
-// GL). Its default export is the `Map` class; layer types include tileLayer,
-// boundary, geoJson, choropleth, clientCluster, donutCluster, events, markers.
-import D2Map from '@dhis2/maps-gl';
+import React, { useEffect, useRef, useCallback } from 'react';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import bbox from '@turf/bbox';
 import type { Settlement, FlagResult, TrackerPoint } from '../types';
 import type { Basemap, OverlayToggles } from '../lib/basemaps';
 
 /**
- * Map rendered with the official DHIS2 Maps engine (@dhis2/maps-gl) rather than
- * raw MapLibre, so it shares the exact layer sources DHIS2 Maps app uses:
- *  - tileLayer   → OSM basemap (swap for your configured DHIS2 basemap)
- *  - geoJson     → settlement polygons (one layer per active microplan)
- *  - boundary    → org-unit boundary context
- *  - donutCluster→ tracker/event points, grouped by program stage
- *  - geoJson     → flagged (out-of-bounds) points, styled red
+ * Map rendered with **maplibre-gl directly** (replacing @dhis2/maps-gl, whose
+ * async `layer.addTo()` raced the GL style load and threw
+ * "Style is not done loading"). We replicate the maps-app MapView behaviour —
+ * basemap + per-layer sources, clustered event points, coordinate/feature
+ * popups, a fit-to-data bounds pass, and a loading mask — but own the style
+ * lifecycle ourselves so every source/layer mutation runs only after the style
+ * is ready. Clustering uses MapLibre's native GeoJSON clustering, which keeps
+ * zooming smooth even with large point sets. Turf is used for bbox math.
  *
- * Each uploaded microplan contributes its own settlement + point layers, so the
- * map filters (user / period / level / org unit) simply choose which microplans'
- * layers are mounted.
+ * Layer model (mirrors the DHIS2 Maps app layer families):
+ *  - raster basemap          (tileLayer equivalent)
+ *  - settlements fill+line   (geoJson polygons)
+ *  - clustered points        (clientCluster/donutCluster equivalent)
+ *  - flagged points          (emphasis layer for out-of-bounds)
  */
 
 const STAGE_COLORS: Record<string, string> = {
@@ -34,16 +35,26 @@ export interface MicroplanLayerData {
   flags: FlagResult[];
 }
 
+const SRC = {
+  settlements: 'mp-settlements',
+  points: 'mp-points',
+  flagged: 'mp-flagged',
+} as const;
+
+const LYR = {
+  settlementFill: 'mp-settlement-fill',
+  settlementLine: 'mp-settlement-line',
+  clusters: 'mp-clusters',
+  clusterCount: 'mp-cluster-count',
+  point: 'mp-point',
+  flagged: 'mp-flagged-point',
+} as const;
+
 const featureFromSettlement = (s: Settlement) => ({
   type: 'Feature' as const,
   id: s.id,
   geometry: s.geometry,
-  properties: {
-    id: s.id,
-    name: s.name,
-    population: s.population ?? null,
-    ward: s.ward,
-  },
+  properties: { id: s.id, name: s.name, population: s.population ?? null, ward: s.ward },
 });
 
 const pointFeature = (p: TrackerPoint, flagged: boolean) => ({
@@ -56,167 +67,324 @@ const pointFeature = (p: TrackerPoint, flagged: boolean) => ({
     stage: p.programStage ?? p.kind,
     teamCode: p.teamCode ?? '',
     color: flagged ? '#ef4444' : STAGE_COLORS[p.programStage ?? 'default'] ?? STAGE_COLORS.default,
-    flagged,
+    flagged: flagged ? 1 : 0,
   },
 });
+
+const fmtCoord = (n: number) => n.toFixed(5);
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string)
+  );
+const rowHtml = (label: string, value: string) =>
+  `<div class="map-popup__row"><span>${escapeHtml(label)}</span><span>${escapeHtml(value)}</span></div>`;
+
+/** Build the basemap style object for maplibre from our Basemap config. */
+function basemapStyle(basemap?: Basemap): maplibregl.StyleSpecification {
+  const cfg = basemap?.config;
+  const sources: maplibregl.StyleSpecification['sources'] = {};
+  const layers: maplibregl.LayerSpecification[] = [];
+  if (cfg) {
+    const tiles = (cfg.subdomains?.length ? cfg.subdomains : ['a', 'b', 'c']).map((s) =>
+      cfg.url.replace('{s}', s)
+    );
+    sources.basemap = {
+      type: 'raster',
+      tiles,
+      tileSize: 256,
+      attribution: cfg.attribution ?? '',
+      maxzoom: cfg.maxZoom ?? 19,
+    };
+    layers.push({ id: 'basemap', type: 'raster', source: 'basemap' });
+  }
+  return {
+    version: 8,
+    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+    sources,
+    layers: layers.length
+      ? layers
+      : [{ id: 'bg', type: 'background', paint: { 'background-color': '#eef2f6' } }],
+  };
+}
 
 export const Dhis2Map: React.FC<{
   microplans: MicroplanLayerData[];
   basemap?: Basemap;
   overlays?: OverlayToggles;
-}> = ({ microplans, basemap, overlays }) => {
+  loading?: boolean;
+}> = ({ microplans, basemap, overlays, loading }) => {
   const ref = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<any>(null);
-  const layerObjsRef = useRef<any[]>([]);
-  const basemapObjRef = useRef<any>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const popupRef = useRef<maplibregl.Popup | null>(null);
+  const readyRef = useRef(false);
 
   const ov: OverlayToggles =
     overlays ?? { settlements: true, points: true, flagged: true, boundaries: false };
 
-  // init the DHIS2 map once
+  /** Run a fn once the style is loaded; queue it on 'load' otherwise. */
+  const whenReady = useCallback((map: maplibregl.Map, fn: () => void) => {
+    if (map.isStyleLoaded()) fn();
+    else map.once('load', fn);
+  }, []);
+
+  // ---- init once ----------------------------------------------------------
   useEffect(() => {
     if (!ref.current || mapRef.current) return;
-    const map = new (D2Map as any)(ref.current, {
-      // start centred on Nigeria
-      center: [8.6753, 9.082],
+    const map = new maplibregl.Map({
+      container: ref.current,
+      style: basemapStyle(basemap),
+      center: [8.6753, 9.082], // Nigeria
       zoom: 5.5,
+      attributionControl: { compact: true },
+      // smooth-zoom feel
+      scrollZoom: true,
+      dragRotate: false,
+      pitchWithRotate: false,
     });
     mapRef.current = map;
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
+    map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+
+    map.on('load', () => {
+      readyRef.current = true;
+    });
+
+    // coordinate popup on empty-map click (maps-app behaviour)
+    map.on('click', (e) => {
+      // if a feature layer handled it, those handlers fire first and we bail
+      const hit = map.queryRenderedFeatures(e.point, {
+        layers: [LYR.settlementFill, LYR.point, LYR.flagged, LYR.clusters].filter((id) =>
+          map.getLayer(id)
+        ),
+      });
+      if (hit.length) return;
+      openPopup(
+        map,
+        `<div class="map-popup__title">Coordinate</div>` +
+          `<div class="map-popup__coord">${fmtCoord(e.lngLat.lat)}, ${fmtCoord(e.lngLat.lng)}</div>`,
+        [e.lngLat.lng, e.lngLat.lat]
+      );
+    });
 
     return () => {
       map.remove();
       mapRef.current = null;
+      readyRef.current = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // basemap layer — swap live whenever the chosen basemap changes
+  const openPopup = useCallback((map: maplibregl.Map, html: string, lngLat: [number, number]) => {
+    if (popupRef.current) popupRef.current.remove();
+    popupRef.current = new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
+      .setLngLat(lngLat)
+      .setHTML(`<div class="map-popup">${html}</div>`)
+      .addTo(map);
+  }, []);
+
+  // ---- basemap swap (rebuild style, then re-add overlays) ------------------
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-
-    const apply = () => {
-      // remove previous basemap
-      if (basemapObjRef.current) {
-        try {
-          basemapObjRef.current.removeFrom?.(map);
-        } catch {
-          /* noop */
-        }
-        basemapObjRef.current = null;
-      }
-      const cfg = basemap?.config;
-      if (!cfg) return; // "No basemap" choice
-      const layer = map.createLayer({
-        type: 'tileLayer',
-        url: cfg.url,
-        attribution: cfg.attribution,
-        subdomains: cfg.subdomains,
-        maxZoom: cfg.maxZoom,
-      });
-      layer.addTo(map);
-      // keep the basemap beneath overlays
-      layer.setIndex?.(0);
-      basemapObjRef.current = layer;
+    // setStyle replaces sources/layers; we re-add overlay sources on styledata.
+    map.setStyle(basemapStyle(basemap));
+    const reAdd = () => {
+      mountOverlays();
+      map.off('styledata', reAdd);
     };
-
-    if (map.styleIsLoaded?.()) apply();
-    else map.on('ready', apply);
-    return () => map.off?.('ready', apply);
+    map.on('styledata', reAdd);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basemap]);
 
-  // (re)build overlay layers whenever the active microplans change
-  useEffect(() => {
+  // ---- mount/update overlay sources + layers ------------------------------
+  const mountOverlays = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    const mount = () => {
-      // tear down previous overlays
-      for (const l of layerObjsRef.current) {
-        try {
-          l.removeFrom?.(map);
-        } catch {
-          /* noop */
-        }
+    const settlementFeatures: GeoJSON.Feature[] = [];
+    const pointFeatures: GeoJSON.Feature[] = [];
+    const flaggedFeatures: GeoJSON.Feature[] = [];
+
+    for (const mp of microplans) {
+      if (ov.settlements) settlementFeatures.push(...mp.settlements.map(featureFromSettlement));
+      for (const f of mp.flags) {
+        if (f.inside && ov.points) pointFeatures.push(pointFeature(f.point, false));
+        else if (!f.inside && ov.flagged) flaggedFeatures.push(pointFeature(f.point, true));
       }
-      layerObjsRef.current = [];
+    }
 
-      const allSettlementFeatures: any[] = [];
-
-      for (const mp of microplans) {
-        // settlement polygons → DHIS2 geoJson layer
-        if (ov.settlements && mp.settlements.length) {
-          const data = mp.settlements.map(featureFromSettlement);
-          allSettlementFeatures.push(...data);
-          const layer = map.createLayer({
-            type: 'geoJson',
-            data,
-            style: {
-              color: '#0c8f7d',
-              weight: 1,
-              fillColor: '#2bb5a0',
-              fillOpacity: 0.18,
-            },
-          });
-          layer.addTo(map);
-          layerObjsRef.current.push(layer);
-        }
-
-        // in-bounds points → donutCluster grouped by stage
-        const inBounds = ov.points
-          ? mp.flags.filter((f) => f.inside).map((f) => pointFeature(f.point, false))
-          : [];
-        if (inBounds.length) {
-          const cluster = map.createLayer({
-            type: 'donutCluster',
-            data: inBounds,
-            groups: Object.entries(STAGE_COLORS)
-              .filter(([k]) => k !== 'default')
-              .map(([name, color]) => ({ name, color })),
-            radius: 60,
-          });
-          cluster.addTo(map);
-          layerObjsRef.current.push(cluster);
-        }
-
-        // flagged points → red geoJson layer (kept separate for emphasis)
-        const flagged = ov.flagged
-          ? mp.flags.filter((f) => !f.inside).map((f) => pointFeature(f.point, true))
-          : [];
-        if (flagged.length) {
-          const layer = map.createLayer({
-            type: 'geoJson',
-            data: flagged,
-            style: { color: '#ef4444', radius: 5, fillColor: '#ef4444', fillOpacity: 0.85 },
-          });
-          layer.addTo(map);
-          layerObjsRef.current.push(layer);
-        }
-      }
-
-      // fit to all settlements in view
-      if (allSettlementFeatures.length) {
-        const b = bbox({ type: 'FeatureCollection', features: allSettlementFeatures });
-        try {
-          map.fitBounds(
-            [
-              [b[0], b[1]],
-              [b[2], b[3]],
-            ],
-            { padding: 50, maxZoom: 12 }
-          );
-        } catch {
-          /* fitBounds may throw before style load; ignore */
-        }
+    const upsertSource = (id: string, features: GeoJSON.Feature[], cluster = false) => {
+      const data: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+      const existing = map.getSource(id) as maplibregl.GeoJSONSource | undefined;
+      if (existing) {
+        existing.setData(data);
+      } else {
+        map.addSource(id, {
+          type: 'geojson',
+          data,
+          ...(cluster ? { cluster: true, clusterRadius: 60, clusterMaxZoom: 16 } : {}),
+        });
       }
     };
 
-    if (map.styleIsLoaded?.()) mount();
-    else map.on('ready', mount);
+    upsertSource(SRC.settlements, settlementFeatures);
+    upsertSource(SRC.points, pointFeatures, true);
+    upsertSource(SRC.flagged, flaggedFeatures);
 
-    return () => {
-      map.off?.('ready', mount);
-    };
-  }, [microplans, ov.settlements, ov.points, ov.flagged, ov.boundaries]);
+    // settlement polygons
+    if (!map.getLayer(LYR.settlementFill)) {
+      map.addLayer({
+        id: LYR.settlementFill,
+        type: 'fill',
+        source: SRC.settlements,
+        paint: { 'fill-color': '#2bb5a0', 'fill-opacity': 0.18 },
+      });
+      map.addLayer({
+        id: LYR.settlementLine,
+        type: 'line',
+        source: SRC.settlements,
+        paint: { 'line-color': '#0c8f7d', 'line-width': 1 },
+      });
+      map.on('click', LYR.settlementFill, (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        const p = f.properties as any;
+        openPopup(
+          map,
+          `<div class="map-popup__title">${escapeHtml(String(p.name ?? 'Settlement'))}</div>` +
+            (p.ward ? rowHtml('Ward', String(p.ward)) : '') +
+            (p.population != null && p.population !== 'null'
+              ? rowHtml('Population', Number(p.population).toLocaleString())
+              : '') +
+            `<div class="map-popup__coord">${fmtCoord(e.lngLat.lat)}, ${fmtCoord(e.lngLat.lng)}</div>`,
+          [e.lngLat.lng, e.lngLat.lat]
+        );
+      });
+    }
 
-  return <div ref={ref} className="mapview" style={{ height: '70vh', width: '100%' }} />;
+    // clustered in-bounds points
+    if (!map.getLayer(LYR.clusters)) {
+      map.addLayer({
+        id: LYR.clusters,
+        type: 'circle',
+        source: SRC.points,
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': '#2f6df6',
+          'circle-opacity': 0.85,
+          'circle-radius': ['step', ['get', 'point_count'], 14, 25, 20, 100, 28],
+        },
+      });
+      map.addLayer({
+        id: LYR.clusterCount,
+        type: 'symbol',
+        source: SRC.points,
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-font': ['Open Sans Regular'],
+          'text-size': 12,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+      map.addLayer({
+        id: LYR.point,
+        type: 'circle',
+        source: SRC.points,
+        filter: ['!', ['has', 'point_count']],
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': 5,
+          'circle-stroke-width': 1,
+          'circle-stroke-color': '#ffffff',
+        },
+      });
+      // zoom into a cluster on click (smooth easeTo)
+      map.on('click', LYR.clusters, (e) => {
+        const f = map.queryRenderedFeatures(e.point, { layers: [LYR.clusters] })[0];
+        const clusterId = f?.properties?.cluster_id;
+        const src = map.getSource(SRC.points) as maplibregl.GeoJSONSource;
+        if (clusterId == null || !src) return;
+        src.getClusterExpansionZoom(clusterId).then((zoom) => {
+          map.easeTo({ center: (f.geometry as any).coordinates, zoom: zoom + 0.2, duration: 500 });
+        });
+      });
+      map.on('click', LYR.point, (e) => {
+        const p = e.features?.[0]?.properties as any;
+        if (!p) return;
+        openPopup(
+          map,
+          `<div class="map-popup__title">${escapeHtml(String(p.name))}</div>` +
+            rowHtml('Stage', String(p.stage)) +
+            (p.teamCode ? rowHtml('Team', String(p.teamCode)) : '') +
+            `<div class="map-popup__coord">${fmtCoord(e.lngLat.lat)}, ${fmtCoord(e.lngLat.lng)}</div>`,
+          [e.lngLat.lng, e.lngLat.lat]
+        );
+      });
+      for (const id of [LYR.clusters, LYR.point]) {
+        map.on('mouseenter', id, () => (map.getCanvas().style.cursor = 'pointer'));
+        map.on('mouseleave', id, () => (map.getCanvas().style.cursor = ''));
+      }
+    }
+
+    // flagged points (emphasis)
+    if (!map.getLayer(LYR.flagged)) {
+      map.addLayer({
+        id: LYR.flagged,
+        type: 'circle',
+        source: SRC.flagged,
+        paint: {
+          'circle-color': '#ef4444',
+          'circle-radius': 6,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': 'rgba(239,68,68,0.35)',
+        },
+      });
+      map.on('click', LYR.flagged, (e) => {
+        const p = e.features?.[0]?.properties as any;
+        if (!p) return;
+        openPopup(
+          map,
+          `<div class="map-popup__title">${escapeHtml(String(p.name))}</div>` +
+            rowHtml('Stage', String(p.stage)) +
+            (p.teamCode ? rowHtml('Team', String(p.teamCode)) : '') +
+            `<div class="map-popup__coord">${fmtCoord(e.lngLat.lat)}, ${fmtCoord(e.lngLat.lng)}</div>` +
+            `<div class="map-popup__flag">⚠ Outside assigned settlement</div>`,
+          [e.lngLat.lng, e.lngLat.lat]
+        );
+      });
+      map.on('mouseenter', LYR.flagged, () => (map.getCanvas().style.cursor = 'pointer'));
+      map.on('mouseleave', LYR.flagged, () => (map.getCanvas().style.cursor = ''));
+    }
+
+    // fit to data
+    const allFeatures = [...settlementFeatures, ...pointFeatures, ...flaggedFeatures];
+    if (allFeatures.length) {
+      try {
+        const b = bbox({ type: 'FeatureCollection', features: allFeatures });
+        map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 60, maxZoom: 13, duration: 600 });
+      } catch {
+        /* ignore degenerate bbox */
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [microplans, ov.settlements, ov.points, ov.flagged, openPopup]);
+
+  // re-mount overlays whenever data/toggles change (guarded by style load)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    whenReady(map, mountOverlays);
+  }, [mountOverlays, whenReady]);
+
+  return (
+    <div className="mapview-wrap" style={{ position: 'relative', height: '70vh', width: '100%' }}>
+      <div ref={ref} className="mapview" style={{ height: '100%', width: '100%' }} />
+      {loading && (
+        <div className="map-mask">
+          <div className="map-mask__spinner" />
+        </div>
+      )}
+    </div>
+  );
 };
