@@ -212,3 +212,13 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 .outree__name:hover { background: var(--panel2); }
 .outree__name small { color: var(--faint); font-size: 10px; }
 .outree__name.is-selected { background: rgba(13,148,136,.14); color: var(--accent); }
+
+/* ---- selected-org-unit week legend -------------------------------------- */
+.mapwrap__weeks { position: absolute; top: 12px; left: 12px; z-index: 5;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: rgba(255,255,255,.92); backdrop-filter: blur(6px);
+  border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; box-shadow: var(--shadow); }
+.mapwrap__weeks-title { font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--muted); }
+.weekchip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.weekchip__dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }

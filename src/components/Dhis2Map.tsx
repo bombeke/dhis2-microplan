@@ -4,6 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import bbox from '@turf/bbox';
 import type { Settlement, FlagResult, TrackerPoint } from '../types';
 import type { Basemap, OverlayToggles } from '../lib/basemaps';
+import type { SelectedOrgUnitLayers } from '../hooks/useSelectedOrgUnitLayers';
 
 /**
  * Map rendered with **maplibre-gl directly** (replacing @dhis2/maps-gl, whose
@@ -39,6 +40,9 @@ const SRC = {
   settlements: 'mp-settlements',
   points: 'mp-points',
   flagged: 'mp-flagged',
+  grid3: 'sel-grid3',
+  weeks: 'sel-weeks',
+  events: 'sel-events',
 } as const;
 
 const LYR = {
@@ -48,7 +52,24 @@ const LYR = {
   clusterCount: 'mp-cluster-count',
   point: 'mp-point',
   flagged: 'mp-flagged-point',
+  // selected-org-unit overlays
+  grid3Line: 'sel-grid3-line',
+  grid3Fill: 'sel-grid3-fill',
+  weeksFill: 'sel-weeks-fill',
+  weeksLine: 'sel-weeks-line',
+  eventClusters: 'sel-event-clusters',
+  eventClusterCount: 'sel-event-cluster-count',
+  eventPoint: 'sel-event-point',
 } as const;
+
+// Per-week highlight colours (weeks 1..5) for the uploaded-settlement overlay.
+const WEEK_COLORS: Record<number, string> = {
+  1: '#f97316', // orange
+  2: '#22c55e', // green
+  3: '#3b82f6', // blue
+  4: '#a855f7', // purple
+  5: '#ec4899', // pink
+};
 
 const featureFromSettlement = (s: Settlement) => ({
   type: 'Feature' as const,
@@ -78,6 +99,14 @@ const escapeHtml = (s: string) =>
   );
 const rowHtml = (label: string, value: string) =>
   `<div class="map-popup__row"><span>${escapeHtml(label)}</span><span>${escapeHtml(value)}</span></div>`;
+
+/** Create or update a plain (non-clustered) GeoJSON source. */
+function upsertGeoJson(map: maplibregl.Map, id: string, features: GeoJSON.Feature[]) {
+  const data: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+  const existing = map.getSource(id) as maplibregl.GeoJSONSource | undefined;
+  if (existing) existing.setData(data);
+  else map.addSource(id, { type: 'geojson', data });
+}
 
 /** Build the basemap style object for maplibre from our Basemap config. */
 function basemapStyle(basemap?: Basemap): maplibregl.StyleSpecification {
@@ -112,7 +141,8 @@ export const Dhis2Map: React.FC<{
   basemap?: Basemap;
   overlays?: OverlayToggles;
   loading?: boolean;
-}> = ({ microplans, basemap, overlays, loading }) => {
+  selected?: SelectedOrgUnitLayers | null;
+}> = ({ microplans, basemap, overlays, loading, selected }) => {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -376,6 +406,177 @@ export const Dhis2Map: React.FC<{
     if (!map) return;
     whenReady(map, mountOverlays);
   }, [mountOverlays, whenReady]);
+
+  // ---- selected-org-unit overlays (GRID3 / week settlements / events) ------
+  const mountSelected = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Step 1 — GRID3 settlement extents as boundary-line polygons
+    const grid3Features: GeoJSON.Feature[] = (selected?.grid3 ?? []).map((s) => ({
+      type: 'Feature',
+      id: s.id,
+      geometry: s.geometry,
+      properties: { id: s.id, extentType: s.extentType, areaSqm: s.areaSqm },
+    }));
+    upsertGeoJson(map, SRC.grid3, grid3Features);
+    if (!map.getLayer(LYR.grid3Fill)) {
+      map.addLayer({
+        id: LYR.grid3Fill,
+        type: 'fill',
+        source: SRC.grid3,
+        paint: { 'fill-color': '#6366f1', 'fill-opacity': 0.06 },
+      });
+      map.addLayer({
+        id: LYR.grid3Line,
+        type: 'line',
+        source: SRC.grid3,
+        paint: { 'line-color': '#4338ca', 'line-width': 1.4 },
+      });
+      map.on('click', LYR.grid3Fill, (e) => {
+        const p = e.features?.[0]?.properties as any;
+        if (!p) return;
+        openPopup(
+          map,
+          `<div class="map-popup__title">GRID3 settlement block</div>` +
+            rowHtml('Type', String(p.extentType ?? '—')) +
+            (p.areaSqm ? rowHtml('Area', `${Math.round(Number(p.areaSqm)).toLocaleString()} m²`) : '') +
+            rowHtml('Block', String(p.id)),
+          [e.lngLat.lng, e.lngLat.lat]
+        );
+      });
+    }
+
+    // Step 2 — uploaded settlements highlighted by week (one colour per week)
+    const weekFeatures: GeoJSON.Feature[] = [];
+    for (const ws of selected?.weekSettlements ?? []) {
+      for (const s of ws.settlements) {
+        weekFeatures.push({
+          type: 'Feature',
+          id: `${ws.week}:${s.id}`,
+          geometry: s.geometry,
+          properties: {
+            id: s.id,
+            name: s.name,
+            week: ws.week,
+            color: WEEK_COLORS[ws.week] ?? '#f59e0b',
+            population: s.population ?? null,
+          },
+        });
+      }
+    }
+    upsertGeoJson(map, SRC.weeks, weekFeatures);
+    if (!map.getLayer(LYR.weeksFill)) {
+      map.addLayer({
+        id: LYR.weeksFill,
+        type: 'fill',
+        source: SRC.weeks,
+        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.35 },
+      });
+      map.addLayer({
+        id: LYR.weeksLine,
+        type: 'line',
+        source: SRC.weeks,
+        paint: { 'line-color': ['get', 'color'], 'line-width': 1.5 },
+      });
+      map.on('click', LYR.weeksFill, (e) => {
+        const p = e.features?.[0]?.properties as any;
+        if (!p) return;
+        openPopup(
+          map,
+          `<div class="map-popup__title">${escapeHtml(String(p.name))}</div>` +
+            rowHtml('Outreach week', `Week ${p.week}`) +
+            (p.population != null && p.population !== 'null'
+              ? rowHtml('Population', Number(p.population).toLocaleString())
+              : ''),
+          [e.lngLat.lng, e.lngLat.lat]
+        );
+      });
+    }
+
+    // Step 3 — DHIS2 event coordinates, clustered
+    const eventFeatures: GeoJSON.Feature[] = (selected?.eventPoints ?? []).map((p) => ({
+      type: 'Feature',
+      id: p.id,
+      geometry: { type: 'Point', coordinates: p.coordinate },
+      properties: { id: p.id, name: p.name ?? p.id, stage: p.programStage ?? p.kind },
+    }));
+    const evSrc = map.getSource(SRC.events) as maplibregl.GeoJSONSource | undefined;
+    const evData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: eventFeatures };
+    if (evSrc) evSrc.setData(evData);
+    else
+      map.addSource(SRC.events, {
+        type: 'geojson',
+        data: evData,
+        cluster: true,
+        clusterRadius: 60,
+        clusterMaxZoom: 16,
+      });
+    if (!map.getLayer(LYR.eventClusters)) {
+      map.addLayer({
+        id: LYR.eventClusters,
+        type: 'circle',
+        source: SRC.events,
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': '#0ea5e9',
+          'circle-opacity': 0.85,
+          'circle-radius': ['step', ['get', 'point_count'], 14, 25, 20, 100, 28],
+        },
+      });
+      map.addLayer({
+        id: LYR.eventClusterCount,
+        type: 'symbol',
+        source: SRC.events,
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-font': ['Open Sans Regular'],
+          'text-size': 12,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+      map.addLayer({
+        id: LYR.eventPoint,
+        type: 'circle',
+        source: SRC.events,
+        filter: ['!', ['has', 'point_count']],
+        paint: {
+          'circle-color': '#0284c7',
+          'circle-radius': 5,
+          'circle-stroke-width': 1,
+          'circle-stroke-color': '#ffffff',
+        },
+      });
+      map.on('click', LYR.eventClusters, (e) => {
+        const f = map.queryRenderedFeatures(e.point, { layers: [LYR.eventClusters] })[0];
+        const clusterId = f?.properties?.cluster_id;
+        const src = map.getSource(SRC.events) as maplibregl.GeoJSONSource;
+        if (clusterId == null || !src) return;
+        src.getClusterExpansionZoom(clusterId).then((zoom) => {
+          map.easeTo({ center: (f.geometry as any).coordinates, zoom: zoom + 0.2, duration: 500 });
+        });
+      });
+    }
+
+    // fit to the selected unit's data on first population
+    const fitFeatures = [...grid3Features, ...weekFeatures, ...eventFeatures];
+    if (fitFeatures.length) {
+      try {
+        const b = bbox({ type: 'FeatureCollection', features: fitFeatures });
+        map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 60, maxZoom: 14, duration: 600 });
+      } catch {
+        /* ignore */
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, openPopup]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    whenReady(map, mountSelected);
+  }, [mountSelected, whenReady]);
 
   return (
     <div className="mapview-wrap" style={{ position: 'relative', height: '70vh', width: '100%' }}>

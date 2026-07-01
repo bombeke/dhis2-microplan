@@ -11,6 +11,7 @@ import { getBasemap } from '../lib/basemaps';
 import { fetchEnrollmentPoints, fetchEventPoints } from '../lib/dhis2Data';
 import { flagPoints, assignedByTeamFrom } from '../lib/flagging';
 import { useOrgUnitHierarchy } from '../hooks/useOrgUnits';
+import { useSelectedOrgUnitLayers } from '../hooks/useSelectedOrgUnitLayers';
 import type { Settlement } from '../types';
 
 /**
@@ -33,6 +34,13 @@ export const MapPage: React.FC<{ program?: string }> = ({ program }) => {
     for (const o of hierarchy) m.set(o.id, o.path);
     return m;
   }, [hierarchy]);
+
+  // Selected-org-unit overlays: GRID3 settlements (spatial), uploaded
+  // settlements highlighted by week, and DHIS2 event coordinates (clustered).
+  const { data: selectedLayers, isFetching: selectedFetching } = useSelectedOrgUnitLayers(
+    mapFilters.orgUnitId,
+    { program }
+  );
 
   // catalogue after filters
   const filtered = useMemo(
@@ -103,7 +111,8 @@ export const MapPage: React.FC<{ program?: string }> = ({ program }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsToShow.join(','), planQueries.map((q) => q.dataUpdatedAt).join(','), pointQueries.map((q) => q.dataUpdatedAt).join(',')]);
 
-  const loading = planQueries.some((q) => q.isLoading) || pointQueries.some((q) => q.isLoading);
+  const loading =
+    planQueries.some((q) => q.isLoading) || pointQueries.some((q) => q.isLoading) || selectedFetching;
 
   return (
     <div className="page page--map">
@@ -114,14 +123,44 @@ export const MapPage: React.FC<{ program?: string }> = ({ program }) => {
           basemap={getBasemap(basemapId)}
           overlays={overlays}
           loading={loading}
+          selected={selectedLayers}
         />
         <LayerControl />
-        {loading && <div className="mapwrap__loading">Loading microplan layers…</div>}
+        {loading && <div className="mapwrap__loading">Loading map layers…</div>}
         <div className="mapwrap__legend">
-          <strong>{microplans.length}</strong> microplan(s) on map ·{' '}
+          <strong>{microplans.length}</strong> microplan(s) ·{' '}
           {microplans.reduce((n, m) => n + m.flags.filter((f) => !f.inside).length, 0)} flagged
+          {selectedLayers && (
+            <>
+              {' '}· <strong>{selectedLayers.grid3.length}</strong> GRID3
+              {selectedLayers.grid3Truncated ? '+' : ''} ·{' '}
+              <strong>{selectedLayers.eventPoints.length}</strong> events
+            </>
+          )}
         </div>
+        {selectedLayers && selectedLayers.weekSettlements.length > 0 && (
+          <div className="mapwrap__weeks">
+            <span className="mapwrap__weeks-title">Outreach weeks</span>
+            {selectedLayers.weekSettlements.map((ws) => (
+              <span key={ws.week} className="weekchip">
+                <span
+                  className="weekchip__dot"
+                  style={{ background: WEEK_LEGEND_COLORS[ws.week] ?? '#f59e0b' }}
+                />
+                W{ws.week} ({ws.settlements.length})
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
+};
+
+const WEEK_LEGEND_COLORS: Record<number, string> = {
+  1: '#f97316',
+  2: '#22c55e',
+  3: '#3b82f6',
+  4: '#a855f7',
+  5: '#ec4899',
 };
