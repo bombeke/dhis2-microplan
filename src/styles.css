@@ -184,3 +184,31 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 .ssel__opt.is-active { background: rgba(13,148,136,.10); color: var(--accent); }
 .ssel__opt small { color: var(--muted); font-size: 11px; }
 .ssel__empty { padding: 10px; color: var(--muted); font-size: 13px; text-align: center; }
+
+/* ---- org-unit hierarchy tree select ------------------------------------- */
+.outree { position: relative; display: inline-block; }
+.outree__panel { position: absolute; top: 38px; left: 0; z-index: 30; width: 320px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: var(--shadow-lg); overflow: hidden; }
+.outree__body { max-height: 340px; overflow: auto; padding: 4px; }
+.outree__error { padding: 10px; color: var(--flag); font-size: 12px; }
+.outree__all { padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; }
+.outree__all:hover { background: var(--panel2); }
+.outree__all.is-active { background: rgba(13,148,136,.10); color: var(--accent); }
+.outree__results { list-style: none; margin: 0; padding: 0; }
+.outree__results li { display: flex; justify-content: space-between; align-items: baseline;
+  gap: 8px; padding: 7px 10px; border-radius: 7px; cursor: pointer; }
+.outree__results li:hover { background: var(--panel2); }
+.outree__results li.is-active { background: rgba(13,148,136,.10); color: var(--accent); }
+.outree__results small { color: var(--muted); font-size: 11px; }
+.outree__branch { }
+.outree__row { display: flex; align-items: center; gap: 2px; }
+.outree__toggle { background: none; border: none; color: var(--muted); cursor: pointer;
+  width: 18px; font-size: 11px; padding: 2px; }
+.outree__spacer { display: inline-block; width: 18px; }
+.outree__name { display: flex; align-items: baseline; gap: 6px; background: none; border: none;
+  color: var(--ink); cursor: pointer; padding: 4px 7px; border-radius: 6px; font-size: 13px;
+  text-align: left; flex: 1; }
+.outree__name:hover { background: var(--panel2); }
+.outree__name small { color: var(--faint); font-size: 10px; }
+.outree__name.is-selected { background: rgba(13,148,136,.14); color: var(--accent); }

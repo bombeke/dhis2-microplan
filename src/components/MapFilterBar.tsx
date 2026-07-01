@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import { RELATIVE_PERIODS } from '../lib/periods';
 import { SearchableSelect } from './SearchableSelect';
+import { OrgUnitTreeSelect } from './OrgUnitTreeSelect';
 import { useOrgUnitHierarchy } from '../hooks/useOrgUnits';
 import type { SearchOption } from '../hooks/useFlexFilter';
 import type { MicroplanIndexEntry } from '../lib/microplanStore';
@@ -20,7 +21,7 @@ import type { MicroplanIndexEntry } from '../lib/microplanStore';
  */
 export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index }) => {
   const { mapFilters, setMapFilter, resetMapFilters } = useStore();
-  const { data: hierarchy = [], isLoading: ouLoading } = useOrgUnitHierarchy();
+  const { data: hierarchy = [] } = useOrgUnitHierarchy();
 
   const { userOptions, periods } = useMemo(() => {
     const users = new Map<string, string>();
@@ -34,13 +35,12 @@ export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index
   }, [index]);
 
   // org-unit options + available levels come from the full cached hierarchy
-  const { orgUnitOptions, levels } = useMemo(() => {
-    const levels = new Set<number>();
-    const orgUnitOptions: SearchOption[] = hierarchy.map((o) => {
-      levels.add(o.level);
-      return { id: o.id, label: o.name, sublabel: `level ${o.level}` };
-    });
-    return { orgUnitOptions, levels };
+  // available levels come from the full cached hierarchy; the org-unit options
+  // themselves are owned by the OrgUnitTreeSelect (tree + FlexSearch).
+  const levels = useMemo(() => {
+    const set = new Set<number>();
+    for (const o of hierarchy) set.add(o.level);
+    return set;
   }, [hierarchy]);
 
   const periodName = (id: string) => RELATIVE_PERIODS.find((p) => p.id === id)?.name ?? id;
@@ -79,11 +79,8 @@ export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index
         ))}
       </select>
 
-      <SearchableSelect
-        options={orgUnitOptions}
+      <OrgUnitTreeSelect
         value={mapFilters.orgUnitId}
-        allLabel={ouLoading ? 'Loading org units…' : 'All org units'}
-        placeholder="Search org units…"
         onChange={(id) => setMapFilter('orgUnitId', id)}
       />
 
