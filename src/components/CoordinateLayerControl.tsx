@@ -20,16 +20,16 @@ export const CoordinateLayerControl: React.FC<{
 
   // A dimension id is either "<attrId>" or "<stageId>.<deId>"; label each from
   // metaData.items, falling back to the raw id.
+  // Attribute dims → just the attribute name. Stage-dataElement dims (id is
+  // "stageId.deId") → "DataElement (Stage)" e.g. "Geo-coordinate (6 Weeks)".
   const labelFor = (dimId: string): string => {
-    if (metaItems[dimId]?.name) return metaItems[dimId].name as string;
     if (dimId.includes('.')) {
       const [stageId, deId] = dimId.split('.');
+      const de = (metaItems[deId]?.name as string | undefined) ?? deId;
       const stage = metaItems[stageId]?.name as string | undefined;
-      const de = metaItems[deId]?.name as string | undefined;
-      if (stage && de) return `${de} · ${stage}`;
-      if (de) return de;
+      return stage ? `${de} (${stage})` : de;
     }
-    return dimId;
+    return (metaItems[dimId]?.name as string | undefined) ?? dimId;
   };
 
   return (

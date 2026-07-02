@@ -150,14 +150,16 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
           loading={loading}
           selected={visibleSelected}
         />
-        <LayerControl />
-        {selectedLayers && selectedLayers.coordinateDimensionIds.length > 0 && (
-          <CoordinateLayerControl
-            dimensionIds={selectedLayers.coordinateDimensionIds}
-            metaItems={selectedLayers.coordinateMetaItems}
-            countsByDim={coordCounts}
-          />
-        )}
+        <div className="map-controls">
+          <LayerControl />
+          {selectedLayers && selectedLayers.coordinateDimensionIds.length > 0 && (
+            <CoordinateLayerControl
+              dimensionIds={selectedLayers.coordinateDimensionIds}
+              metaItems={selectedLayers.coordinateMetaItems}
+              countsByDim={coordCounts}
+            />
+          )}
+        </div>
         {loading && <div className="mapwrap__loading">Loading map layers…</div>}
         <div className="mapwrap__legend">
           <strong>{microplans.length}</strong> microplan(s) ·{' '}

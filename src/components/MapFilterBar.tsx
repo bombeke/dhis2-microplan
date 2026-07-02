@@ -4,7 +4,11 @@ import { RELATIVE_PERIODS } from '../lib/periods';
 import { SearchableSelect } from './SearchableSelect';
 import { OrgUnitTreeSelect } from './OrgUnitTreeSelect';
 import { ProgramSelect } from './ProgramSelect';
+import { GroupedMultiSelect } from './GroupedMultiSelect';
 import { useOrgUnitHierarchy } from '../hooks/useOrgUnits';
+import { useProgramDimensions } from '../hooks/useProgramDimensions';
+import { useUsers } from '../hooks/useUsers';
+import { useOrgUnitLevels } from '../hooks/useOrgUnitLevels';
 import type { SearchOption } from '../hooks/useFlexFilter';
 import type { MicroplanIndexEntry } from '../lib/microplanStore';
 
@@ -21,28 +25,45 @@ import type { MicroplanIndexEntry } from '../lib/microplanStore';
  * select.
  */
 export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index }) => {
-  const { mapFilters, setMapFilter, resetMapFilters } = useStore();
+  const { mapFilters, setMapFilter, resetMapFilters, selectedDimensions, setSelectedDimensions } =
+    useStore();
+  const { data: dimensionGroups = [], isLoading: dimsLoading } = useProgramDimensions(
+    mapFilters.programId
+  );
   const { data: hierarchy = [] } = useOrgUnitHierarchy();
+  const { data: users = [], isLoading: usersLoading } = useUsers();
+  const { data: levelNames = [] } = useOrgUnitLevels();
 
-  const { userOptions, periods } = useMemo(() => {
-    const users = new Map<string, string>();
-    const periods = new Set<string>();
-    for (const e of index) {
-      users.set(e.uploadedById, e.uploadedBy);
-      periods.add(e.period);
-    }
-    const userOptions: SearchOption[] = [...users.entries()].map(([id, label]) => ({ id, label }));
-    return { userOptions, periods };
+  const periods = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of index) set.add(e.period);
+    return set;
   }, [index]);
 
-  // org-unit options + available levels come from the full cached hierarchy
-  // available levels come from the full cached hierarchy; the org-unit options
-  // themselves are owned by the OrgUnitTreeSelect (tree + FlexSearch).
-  const levels = useMemo(() => {
+  // "All users": everyone the current user can access, shown as "Name (username)"
+  // and searchable by either. Username lives in sublabel so FlexSearch indexes it.
+  const userOptions: SearchOption[] = useMemo(
+    () => users.map((u) => ({ id: u.id, label: u.name, sublabel: u.username })),
+    [users]
+  );
+
+  // Levels present in the hierarchy, labelled with their level name when known.
+  const levelName = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const l of levelNames) m.set(l.level, l.name);
+    return m;
+  }, [levelNames]);
+  const levelOptions: SearchOption[] = useMemo(() => {
     const set = new Set<number>();
     for (const o of hierarchy) set.add(o.level);
-    return set;
-  }, [hierarchy]);
+    return [...set]
+      .sort((a, b) => a - b)
+      .map((l) => ({
+        id: String(l),
+        label: levelName.get(l) ?? `Level ${l}`,
+        sublabel: `Level ${l}`,
+      }));
+  }, [hierarchy, levelName]);
 
   const periodName = (id: string) => RELATIVE_PERIODS.find((p) => p.id === id)?.name ?? id;
   const active =
@@ -59,8 +80,9 @@ export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index
       <SearchableSelect
         options={userOptions}
         value={mapFilters.uploadedById}
-        allLabel="All users"
-        placeholder="Search users…"
+        allLabel={usersLoading ? 'Loading users…' : 'All users'}
+        placeholder="Search name or username…"
+        bracketSublabel
         onChange={(id) => setMapFilter('uploadedById', id)}
       />
 
@@ -74,15 +96,14 @@ export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index
         ))}
       </select>
 
-      <select
-        value={mapFilters.level ?? ''}
-        onChange={(e) => setMapFilter('level', e.target.value ? Number(e.target.value) : null)}
-      >
-        <option value="">All levels</option>
-        {[...levels].sort((a, b) => a - b).map((l) => (
-          <option key={l} value={l}>Level {l}</option>
-        ))}
-      </select>
+      <SearchableSelect
+        options={levelOptions}
+        value={mapFilters.level != null ? String(mapFilters.level) : null}
+        allLabel="All levels"
+        placeholder="Search levels…"
+        bracketSublabel
+        onChange={(id) => setMapFilter('level', id ? Number(id) : null)}
+      />
 
       <OrgUnitTreeSelect
         value={mapFilters.orgUnitId}
@@ -91,8 +112,20 @@ export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index
 
       <ProgramSelect
         value={mapFilters.programId}
-        onChange={(id) => setMapFilter('programId', id)}
+        onChange={(id) => {
+          setMapFilter('programId', id);
+          setSelectedDimensions([]); // reset dimension picks for the new program
+        }}
       />
+
+      {mapFilters.programId && (
+        <GroupedMultiSelect
+          groups={dimensionGroups}
+          selected={selectedDimensions}
+          onChange={setSelectedDimensions}
+          loading={dimsLoading}
+        />
+      )}
 
       {active && (
         <button className="filterbar__reset" onClick={resetMapFilters}>Clear</button>

@@ -13,12 +13,18 @@ export const SearchableSelect: React.FC<{
   placeholder: string;
   allLabel: string;
   onChange: (id: string | null) => void;
-}> = ({ options, value, placeholder, allLabel, onChange }) => {
+  /** when true, render options and trigger as "Label (sublabel)" inline */
+  bracketSublabel?: boolean;
+}> = ({ options, value, placeholder, allLabel, onChange, bracketSublabel }) => {
   const { query, setQuery, results } = useFlexFilter(options);
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
 
-  const selectedLabel = value ? options.find((o) => o.id === value)?.label ?? value : allLabel;
+  const fmt = (o: SearchOption) =>
+    bracketSublabel && o.sublabel ? `${o.label} (${o.sublabel})` : o.label;
+
+  const selectedOpt = value ? options.find((o) => o.id === value) : undefined;
+  const selectedLabel = selectedOpt ? fmt(selectedOpt) : value ? value : allLabel;
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -64,8 +70,14 @@ export const SearchableSelect: React.FC<{
                   setQuery('');
                 }}
               >
-                <span>{o.label}</span>
-                {o.sublabel && <small>{o.sublabel}</small>}
+                {bracketSublabel ? (
+                  <span>{fmt(o)}</span>
+                ) : (
+                  <>
+                    <span>{o.label}</span>
+                    {o.sublabel && <small>{o.sublabel}</small>}
+                  </>
+                )}
               </li>
             ))}
             {results.length === 0 && <li className="ssel__empty">No matches</li>}

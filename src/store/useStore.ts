@@ -63,6 +63,10 @@ interface AppState {
   hiddenCoordinateDims: string[];
   toggleCoordinateDim: (dimensionId: string) => void;
   setHiddenCoordinateDims: (ids: string[]) => void;
+
+  // FilterMap: attribute / data-element dimensions the user picked to focus on
+  selectedDimensions: string[];
+  setSelectedDimensions: (ids: string[]) => void;
 }
 
 /** Filters applied to the uploaded-microplan catalogue on the map page. */
@@ -138,4 +142,7 @@ export const useStore = create<AppState>((set) => ({
         : [...s.hiddenCoordinateDims, dimensionId],
     })),
   setHiddenCoordinateDims: (ids) => set({ hiddenCoordinateDims: ids }),
+
+  selectedDimensions: [],
+  setSelectedDimensions: (ids) => set({ selectedDimensions: ids }),
 }));
