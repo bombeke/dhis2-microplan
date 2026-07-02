@@ -1,11 +1,22 @@
 import type { TrackerPoint, Coord } from '../types';
+import {
+  fetchProgramCoordinateDimensions,
+  type CoordinateDimension,
+} from './programCoordinates';
+import {
+  fetchEnrollmentCoordinateAnalytics,
+  type CoordinateAnalyticsResult,
+} from './analyticsEnrollments';
 
 /**
- * Pulls georeferenced points from DHIS2. Two paths:
- *  - Tracker enrollments (one point per TEI enrollment) via /tracker/events
- *    and enrollment geometry.
- *  - Program-stage events (one point per stage occurrence), grouped by stage
- *    so the map can colour clusters by stage.
+ * Pulls georeferenced points from DHIS2.
+ *
+ * As of patch 8 the three public fetchers below are *switched* to use the
+ * enrollment coordinate-analytics path (program COORDINATE attributes +
+ * program-stage COORDINATE data elements → analytics/enrollments/query). The
+ * original tracker/analytics-event implementations are KEPT in this file
+ * (suffixed `Legacy`) and used as a fallback when no coordinate dimensions are
+ * discovered or the analytics call fails, so nothing is lost.
  *
  * The DHIS2 data engine instance is injected so this stays testable.
  */
@@ -20,7 +31,45 @@ const parseGeometry = (geometry: any): Coord | null => {
   return null;
 };
 
-export async function fetchEnrollmentPoints(
+/**
+ * Shared helper: discover a program's COORDINATE dimensions and run the
+ * enrollment coordinate-analytics query. Returns null if there are no
+ * coordinate dimensions (so callers can fall back to the legacy path).
+ */
+export async function fetchProgramCoordinatePoints(
+  engine: Engine,
+  opts: {
+    program: string;
+    orgUnit: string;
+    period?: string;
+    stages?: { id: string; name?: string }[];
+    kindFilter?: 'attribute' | 'stageDataElement';
+  }
+): Promise<CoordinateAnalyticsResult | null> {
+  // stages are optional; when omitted we still get attribute dimensions
+  const stages = opts.stages ?? [];
+  let dimensions: CoordinateDimension[] = await fetchProgramCoordinateDimensions(
+    engine,
+    opts.program,
+    stages
+  );
+  if (opts.kindFilter) dimensions = dimensions.filter((d) => d.kind === opts.kindFilter);
+  if (dimensions.length === 0) return null;
+
+  return fetchEnrollmentCoordinateAnalytics(engine, {
+    program: opts.program,
+    orgUnit: opts.orgUnit,
+    dimensions,
+    period: opts.period,
+  });
+}
+
+/** Flatten a coordinate-analytics result into a single point list. */
+export function flattenCoordinateResult(res: CoordinateAnalyticsResult): TrackerPoint[] {
+  return Object.values(res.pointsByDimension).flat();
+}
+
+export async function fetchEnrollmentPointsLegacy(
   engine: Engine,
   opts: { program: string; orgUnit: string; period: string; teamAttr?: string }
 ): Promise<TrackerPoint[]> {
@@ -60,7 +109,7 @@ export async function fetchEnrollmentPoints(
     .filter(Boolean) as TrackerPoint[];
 }
 
-export async function fetchEventPoints(
+export async function fetchEventPointsLegacy(
   engine: Engine,
   opts: { program: string; orgUnit: string; period: string; teamDataElement?: string }
 ): Promise<TrackerPoint[]> {
@@ -102,7 +151,7 @@ export async function fetchEventPoints(
  * Analytics fallback: when tracker geometry isn't available, the analytics
  * event API can return coordinate columns. Used for aggregated stage counts.
  */
-export async function fetchAnalyticsEventPoints(
+export async function fetchAnalyticsEventPointsLegacy(
   engine: Engine,
   opts: { program: string; stage: string; orgUnit: string; period: string }
 ): Promise<TrackerPoint[]> {
@@ -139,4 +188,89 @@ export async function fetchAnalyticsEventPoints(
       };
     })
     .filter(Boolean) as TrackerPoint[];
+}
+
+// ---------------------------------------------------------------------------
+// Public fetchers — SWITCHED to the coordinate-analytics path (patch 8).
+// Each tries program COORDINATE dimensions via analytics/enrollments/query and
+// falls back to its `…Legacy` implementation above when there are no coordinate
+// dimensions or the analytics call fails. Signatures are unchanged so existing
+// callers keep working.
+// ---------------------------------------------------------------------------
+
+/** Fetch the program's stage list (id,name) for stage-dataElement dimensions. */
+async function fetchProgramStages(
+  engine: Engine,
+  program: string
+): Promise<{ id: string; name?: string }[]> {
+  try {
+    const data: any = await engine.query({
+      p: {
+        resource: `programs/${program}`,
+        params: { fields: 'programStages[id,name]', paging: 'false' },
+      },
+    });
+    return (data.p.programStages ?? []).map((s: any) => ({ id: s.id, name: s.name }));
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchEnrollmentPoints(
+  engine: Engine,
+  opts: { program: string; orgUnit: string; period: string; teamAttr?: string }
+): Promise<TrackerPoint[]> {
+  try {
+    const stages = await fetchProgramStages(engine, opts.program);
+    const res = await fetchProgramCoordinatePoints(engine, {
+      program: opts.program,
+      orgUnit: opts.orgUnit,
+      period: 'THIS_MONTH,LAST_MONTH',
+      stages,
+      kindFilter: 'attribute', // enrollment ≈ tracked-entity attribute coordinates
+    });
+    if (res) return flattenCoordinateResult(res);
+  } catch (e) {
+    console.warn('coordinate-analytics enrollment fetch failed; using legacy', e);
+  }
+  return fetchEnrollmentPointsLegacy(engine, opts);
+}
+
+export async function fetchEventPoints(
+  engine: Engine,
+  opts: { program: string; orgUnit: string; period: string; teamDataElement?: string }
+): Promise<TrackerPoint[]> {
+  try {
+    const stages = await fetchProgramStages(engine, opts.program);
+    const res = await fetchProgramCoordinatePoints(engine, {
+      program: opts.program,
+      orgUnit: opts.orgUnit,
+      period: 'THIS_MONTH,LAST_MONTH',
+      stages,
+      kindFilter: 'stageDataElement', // events ≈ program-stage dataElement coordinates
+    });
+    if (res) return flattenCoordinateResult(res);
+  } catch (e) {
+    console.warn('coordinate-analytics event fetch failed; using legacy', e);
+  }
+  return fetchEventPointsLegacy(engine, opts);
+}
+
+export async function fetchAnalyticsEventPoints(
+  engine: Engine,
+  opts: { program: string; stage: string; orgUnit: string; period: string }
+): Promise<TrackerPoint[]> {
+  try {
+    const stages = await fetchProgramStages(engine, opts.program);
+    const res = await fetchProgramCoordinatePoints(engine, {
+      program: opts.program,
+      orgUnit: opts.orgUnit,
+      period: 'THIS_MONTH,LAST_MONTH',
+      stages,
+    });
+    if (res) return flattenCoordinateResult(res);
+  } catch (e) {
+    console.warn('coordinate-analytics fetch failed; using legacy', e);
+  }
+  return fetchAnalyticsEventPointsLegacy(engine, opts);
 }

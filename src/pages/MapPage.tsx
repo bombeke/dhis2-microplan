@@ -7,6 +7,7 @@ import { loadMicroplan } from '../lib/microplanStore';
 import { MapFilterBar, filterIndex } from '../components/MapFilterBar';
 import { Dhis2Map, type MicroplanLayerData } from '../components/Dhis2Map';
 import { LayerControl } from '../components/LayerControl';
+import { CoordinateLayerControl } from '../components/CoordinateLayerControl';
 import { getBasemap } from '../lib/basemaps';
 import { fetchEnrollmentPoints, fetchEventPoints } from '../lib/dhis2Data';
 import { flagPoints, assignedByTeamFrom } from '../lib/flagging';
@@ -24,8 +25,8 @@ import type { Settlement } from '../types';
 export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }) => {
   const engine = useDataEngine();
   const { data: index = [] } = useMicroplanIndex();
-  const { mapFilters, activeMicroplanIds, setActiveMicroplanIds, basemapId, overlays } =
-    useStore();
+  const { mapFilters, activeMicroplanIds, setActiveMicroplanIds, basemapId, overlays,
+    hiddenCoordinateDims } = useStore();
   const { data: hierarchy = [] } = useOrgUnitHierarchy();
 
   // The program the map draws events for comes from the FilterMap program
@@ -45,6 +46,26 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
     mapFilters.orgUnitId,
     { program }
   );
+
+  // Apply the coordinate-layer overlay toggles: keep only points from
+  // dimensions the user hasn't hidden. Also count points per dimension for the
+  // overlay labels.
+  const { visibleSelected, coordCounts } = useMemo(() => {
+    if (!selectedLayers) return { visibleSelected: selectedLayers, coordCounts: {} as Record<string, number> };
+    const counts: Record<string, number> = {};
+    const visiblePoints = [] as typeof selectedLayers.eventPoints;
+    for (const [dimId, pts] of Object.entries(selectedLayers.coordinatePointsByDim)) {
+      counts[dimId] = pts.length;
+      if (!hiddenCoordinateDims.includes(dimId)) visiblePoints.push(...pts);
+    }
+    // if the program had no coordinate dimensions, fall back to eventPoints
+    const eventPoints =
+      selectedLayers.coordinateDimensionIds.length > 0 ? visiblePoints : selectedLayers.eventPoints;
+    return {
+      visibleSelected: { ...selectedLayers, eventPoints },
+      coordCounts: counts,
+    };
+  }, [selectedLayers, hiddenCoordinateDims]);
 
   // catalogue after filters
   const filtered = useMemo(
@@ -127,9 +148,16 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
           basemap={getBasemap(basemapId)}
           overlays={overlays}
           loading={loading}
-          selected={selectedLayers}
+          selected={visibleSelected}
         />
         <LayerControl />
+        {selectedLayers && selectedLayers.coordinateDimensionIds.length > 0 && (
+          <CoordinateLayerControl
+            dimensionIds={selectedLayers.coordinateDimensionIds}
+            metaItems={selectedLayers.coordinateMetaItems}
+            countsByDim={coordCounts}
+          />
+        )}
         {loading && <div className="mapwrap__loading">Loading map layers…</div>}
         <div className="mapwrap__legend">
           <strong>{microplans.length}</strong> microplan(s) ·{' '}

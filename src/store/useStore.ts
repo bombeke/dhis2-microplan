@@ -56,6 +56,13 @@ interface AppState {
   setBasemapId: (id: string) => void;
   overlays: OverlayToggles;
   toggleOverlay: (key: keyof OverlayToggles) => void;
+
+  // which coordinate-analytics dimensions (attribute / stage.dataElement) are
+  // shown on the map. Empty set convention: when nothing has been explicitly
+  // toggled we show all; `hiddenCoordinateDims` tracks the ones turned OFF.
+  hiddenCoordinateDims: string[];
+  toggleCoordinateDim: (dimensionId: string) => void;
+  setHiddenCoordinateDims: (ids: string[]) => void;
 }
 
 /** Filters applied to the uploaded-microplan catalogue on the map page. */
@@ -122,4 +129,13 @@ export const useStore = create<AppState>((set) => ({
   overlays: DEFAULT_OVERLAYS,
   toggleOverlay: (key) =>
     set((s) => ({ overlays: { ...s.overlays, [key]: !s.overlays[key] } })),
+
+  hiddenCoordinateDims: [],
+  toggleCoordinateDim: (dimensionId) =>
+    set((s) => ({
+      hiddenCoordinateDims: s.hiddenCoordinateDims.includes(dimensionId)
+        ? s.hiddenCoordinateDims.filter((d) => d !== dimensionId)
+        : [...s.hiddenCoordinateDims, dimensionId],
+    })),
+  setHiddenCoordinateDims: (ids) => set({ hiddenCoordinateDims: ids }),
 }));

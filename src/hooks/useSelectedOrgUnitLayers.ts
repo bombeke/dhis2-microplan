@@ -2,7 +2,9 @@ import { useDataEngine } from '@dhis2/app-runtime';
 import { useQuery } from '@tanstack/react-query';
 import { fetchGrid3ByEnvelope, geometryToEnvelope, type Grid3Settlement } from '../lib/grid3';
 import { readIndex, loadMicroplan } from '../lib/microplanStore';
-import { fetchEventPoints, fetchAnalyticsEventPoints } from '../lib/dhis2Data';
+import { fetchEventPoints, fetchProgramCoordinatePoints } from '../lib/dhis2Data';
+import { usePrograms } from './usePrograms';
+import type { CoordinateAnalyticsResult } from '../lib/analyticsEnrollments';
 import type { Settlement, TrackerPoint } from '../types';
 
 /**
@@ -32,6 +34,10 @@ export interface SelectedOrgUnitLayers {
   grid3Truncated: boolean;
   weekSettlements: WeekSettlements[];
   eventPoints: TrackerPoint[];
+  // coordinate-analytics: per-dimension points + metaData.items for the overlay
+  coordinatePointsByDim: Record<string, TrackerPoint[]>;
+  coordinateMetaItems: Record<string, { name?: string; [k: string]: unknown }>;
+  coordinateDimensionIds: string[];
 }
 
 async function fetchOrgUnitGeometry(
@@ -52,9 +58,13 @@ export function useSelectedOrgUnitLayers(
   opts?: { program?: string; grid3Url?: string }
 ) {
   const engine = useDataEngine();
+  const { data: programs = [] } = usePrograms();
+  const stages = opts?.program
+    ? programs.find((p) => p.id === opts.program)?.programStages.map((s) => ({ id: s.id, name: s.name })) ?? []
+    : [];
 
   return useQuery<SelectedOrgUnitLayers>({
-    queryKey: ['selected-ou-layers', orgUnitId, opts?.program, opts?.grid3Url],
+    queryKey: ['selected-ou-layers', orgUnitId, opts?.program, opts?.grid3Url, stages.length],
     enabled: !!orgUnitId,
     staleTime: TEN_MIN,
     gcTime: TEN_MIN * 2,
@@ -105,26 +115,34 @@ export function useSelectedOrgUnitLayers(
         .sort((a, b) => a[0] - b[0])
         .map(([week, m]) => ({ week, settlements: [...m.values()] }));
 
-      // ---- Step 3: DHIS2 event coordinates ---------------------------------
+      // ---- Step 3 + 4: coordinate-analytics (per-dimension points + meta) ---
       let eventPoints: TrackerPoint[] = [];
+      let coordinatePointsByDim: Record<string, TrackerPoint[]> = {};
+      let coordinateMetaItems: CoordinateAnalyticsResult['metaDataItems'] = {};
+      let coordinateDimensionIds: string[] = [];
       if (opts?.program) {
         try {
-          eventPoints = await fetchEventPoints(engine as any, {
+          const res = await fetchProgramCoordinatePoints(engine as any, {
             program: opts.program,
             orgUnit: id,
-            period: 'LAST_12_MONTHS',
+            period: 'THIS_MONTH,LAST_MONTH',
+            stages,
           });
-          if (eventPoints.length === 0) {
-            // fall back to the analytics event API for coordinate-only pulls
-            eventPoints = await fetchAnalyticsEventPoints(engine as any, {
+          if (res) {
+            coordinatePointsByDim = res.pointsByDimension;
+            coordinateMetaItems = res.metaDataItems;
+            coordinateDimensionIds = res.nonEmptyDimensionIds;
+            eventPoints = Object.values(res.pointsByDimension).flat();
+          } else {
+            // no COORDINATE dimensions on this program → legacy point fetch
+            eventPoints = await fetchEventPoints(engine as any, {
               program: opts.program,
-              stage: '',
               orgUnit: id,
               period: 'LAST_12_MONTHS',
             });
           }
         } catch (e) {
-          console.warn('event coordinate fetch failed', e);
+          console.warn('coordinate-analytics fetch failed', e);
         }
       }
 
@@ -136,6 +154,9 @@ export function useSelectedOrgUnitLayers(
         grid3Truncated,
         weekSettlements,
         eventPoints,
+        coordinatePointsByDim,
+        coordinateMetaItems,
+        coordinateDimensionIds,
       };
     },
   });
