@@ -26,6 +26,8 @@ export interface MicroplanIndexEntry {
   uploadedBy: string; // username
   uploadedById: string; // user id
   uploadedAt: string; // ISO
+  programId: string; // DHIS2 program (activity) this upload is linked to
+  programName: string;
   period: string; // DHIS2 period id, e.g. THIS_MONTH or 202506
   orgUnitId: string;
   orgUnitName: string;
@@ -100,6 +102,8 @@ export async function saveMicroplan(engine: Engine, plan: StoredMicroplan): Prom
     uploadedBy: plan.uploadedBy,
     uploadedById: plan.uploadedById,
     uploadedAt: plan.uploadedAt,
+    programId: plan.programId,
+    programName: plan.programName,
     period: plan.period,
     orgUnitId: plan.orgUnitId,
     orgUnitName: plan.orgUnitName,

@@ -64,6 +64,7 @@ export interface MapFilters {
   period: string | null; // by month/period
   level: number | null; // by org unit level
   orgUnitId: string | null; // by organisation unit
+  programId: string | null; // by DHIS2 program (activity)
 }
 
 const EMPTY_FILTERS: MapFilters = {
@@ -71,6 +72,7 @@ const EMPTY_FILTERS: MapFilters = {
   period: null,
   level: null,
   orgUnitId: null,
+  programId: null,
 };
 
 export const useStore = create<AppState>((set) => ({

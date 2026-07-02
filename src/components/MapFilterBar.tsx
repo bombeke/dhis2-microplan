@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore';
 import { RELATIVE_PERIODS } from '../lib/periods';
 import { SearchableSelect } from './SearchableSelect';
 import { OrgUnitTreeSelect } from './OrgUnitTreeSelect';
+import { ProgramSelect } from './ProgramSelect';
 import { useOrgUnitHierarchy } from '../hooks/useOrgUnits';
 import type { SearchOption } from '../hooks/useFlexFilter';
 import type { MicroplanIndexEntry } from '../lib/microplanStore';
@@ -45,7 +46,11 @@ export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index
 
   const periodName = (id: string) => RELATIVE_PERIODS.find((p) => p.id === id)?.name ?? id;
   const active =
-    mapFilters.uploadedById || mapFilters.period || mapFilters.level || mapFilters.orgUnitId;
+    mapFilters.uploadedById ||
+    mapFilters.period ||
+    mapFilters.level ||
+    mapFilters.orgUnitId ||
+    mapFilters.programId;
 
   return (
     <div className="filterbar">
@@ -84,6 +89,11 @@ export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index
         onChange={(id) => setMapFilter('orgUnitId', id)}
       />
 
+      <ProgramSelect
+        value={mapFilters.programId}
+        onChange={(id) => setMapFilter('programId', id)}
+      />
+
       {active && (
         <button className="filterbar__reset" onClick={resetMapFilters}>Clear</button>
       )}
@@ -106,6 +116,7 @@ export function filterIndex(
 ): MicroplanIndexEntry[] {
   return index.filter((e) => {
     if (f.uploadedById && e.uploadedById !== f.uploadedById) return false;
+    if (f.programId && e.programId !== f.programId) return false;
     if (f.period && e.period !== f.period) return false;
     if (f.level != null && e.level !== f.level) return false;
     if (f.orgUnitId) {

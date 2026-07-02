@@ -222,3 +222,8 @@ body { margin: 0; background: var(--bg); color: var(--ink);
   color: var(--muted); }
 .weekchip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
 .weekchip__dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+/* ---- required field + warning hints ------------------------------------- */
+.req { color: var(--flag); }
+.field__hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.upload__status--warn { color: #b45309; }

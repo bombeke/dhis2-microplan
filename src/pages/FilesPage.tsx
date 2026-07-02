@@ -39,7 +39,7 @@ export const FilesPage: React.FC = () => {
         <table className="filetable">
           <thead>
             <tr>
-              <th>File</th><th>Period</th><th>Org unit</th><th>Lvl</th>
+              <th>File</th><th>Program</th><th>Period</th><th>Org unit</th><th>Lvl</th>
               <th>Teams</th><th>Settlements</th><th>Uploaded by</th><th>When</th><th></th>
             </tr>
           </thead>
@@ -47,6 +47,7 @@ export const FilesPage: React.FC = () => {
             {files.map((f) => (
               <tr key={f.id} className={activeMicroplanIds.includes(f.id) ? 'is-active' : ''}>
                 <td><strong>{f.fileName}</strong></td>
+                <td>{f.programName || <span className="muted">—</span>}</td>
                 <td>{periodName(f.period)}</td>
                 <td>{f.orgUnitName}</td>
                 <td>{f.level}</td>

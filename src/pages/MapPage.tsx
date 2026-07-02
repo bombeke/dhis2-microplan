@@ -21,12 +21,16 @@ import type { Settlement } from '../types';
  * microplan's own assigned settlements. Everything is handed to Dhis2Map,
  * which renders one set of maplibre-gl layers per microplan.
  */
-export const MapPage: React.FC<{ program?: string }> = ({ program }) => {
+export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }) => {
   const engine = useDataEngine();
   const { data: index = [] } = useMicroplanIndex();
   const { mapFilters, activeMicroplanIds, setActiveMicroplanIds, basemapId, overlays } =
     useStore();
   const { data: hierarchy = [] } = useOrgUnitHierarchy();
+
+  // The program the map draws events for comes from the FilterMap program
+  // field; fall back to any program passed in by the shell.
+  const program = mapFilters.programId ?? programProp;
 
   // id -> path map from the cached hierarchy, for descendant-aware org filtering
   const orgUnitPaths = useMemo(() => {

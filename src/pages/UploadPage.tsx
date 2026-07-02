@@ -9,6 +9,8 @@ import {
 import { useStore } from '../store/useStore';
 import { RELATIVE_PERIODS } from '../lib/periods';
 import { OrgUnitPicker } from '../components/OrgUnitPicker';
+import { ProgramSelect } from '../components/ProgramSelect';
+import { usePrograms } from '../hooks/usePrograms';
 import type { StoredMicroplan } from '../lib/microplanStore';
 import type { MicroplanRow, Settlement } from '../types';
 
@@ -27,9 +29,11 @@ export const UploadPage: React.FC = () => {
   const [rows, setRows] = useState<MicroplanRow[] | null>(null);
   const [fileName, setFileName] = useState('');
   const [period, setPeriod] = useState('THIS_MONTH');
+  const [programId, setProgramId] = useState<string | null>(null);
   const [orgUnit, setOrgUnit] = useState<{ id: string; name: string; level: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const { data: programs = [] } = usePrograms();
 
   const onFile = async (file?: File) => {
     if (!file) return;
@@ -45,7 +49,7 @@ export const UploadPage: React.FC = () => {
   };
 
   const onSave = async () => {
-    if (!rows || !user || !orgUnit) return;
+    if (!rows || !user || !orgUnit || !programId) return;
     setBusy(true);
     setStatus('Resolving settlement geometry…');
     try {
@@ -72,6 +76,8 @@ export const UploadPage: React.FC = () => {
         uploadedBy: user.username,
         uploadedById: user.id,
         uploadedAt: new Date().toISOString(),
+        programId,
+        programName: programs.find((p) => p.id === programId)?.name ?? '',
         period,
         orgUnitId: orgUnit.id,
         orgUnitName: orgUnit.name,
@@ -96,7 +102,7 @@ export const UploadPage: React.FC = () => {
     }
   };
 
-  const canSave = !!rows && !!user && !!orgUnit && !busy;
+  const canSave = !!rows && !!user && !!orgUnit && !!programId && !busy;
 
   return (
     <div className="page page--upload">
@@ -130,6 +136,18 @@ export const UploadPage: React.FC = () => {
       {rows && (
         <div className="upload__meta">
           <div className="field">
+            <label>Activity / program <span className="req">*</span></label>
+            <ProgramSelect
+              value={programId}
+              onChange={setProgramId}
+              allLabel="Select a program…"
+            />
+            <small className="field__hint">
+              Every upload must be linked to a DHIS2 program (activity).
+            </small>
+          </div>
+
+          <div className="field">
             <label>Reporting period</label>
             <select value={period} onChange={(e) => setPeriod(e.target.value)}>
               {RELATIVE_PERIODS.map((p) => (
@@ -154,6 +172,11 @@ export const UploadPage: React.FC = () => {
           {busy ? 'Saving…' : 'Save to dataStore'}
         </button>
         {status && <span className="upload__status">{status}</span>}
+        {rows && !programId && !status && (
+          <span className="upload__status upload__status--warn">
+            Select a program to enable saving.
+          </span>
+        )}
       </div>
     </div>
   );
