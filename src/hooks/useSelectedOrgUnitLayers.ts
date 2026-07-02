@@ -55,7 +55,12 @@ async function fetchOrgUnitGeometry(
 
 export function useSelectedOrgUnitLayers(
   orgUnitId: string | null,
-  opts?: { program?: string; grid3Url?: string }
+  opts?: {
+    program?: string;
+    grid3Url?: string;
+    selectedDimensionIds?: string[];
+    userFilter?: string | null;
+  }
 ) {
   const engine = useDataEngine();
   const { data: programs = [] } = usePrograms();
@@ -63,8 +68,20 @@ export function useSelectedOrgUnitLayers(
     ? programs.find((p) => p.id === opts.program)?.programStages.map((s) => ({ id: s.id, name: s.name })) ?? []
     : [];
 
+  // stable key for the selected-dimension set so the query refetches (and
+  // re-caches) whenever the user changes their attribute/data-element picks.
+  const selectedKey = (opts?.selectedDimensionIds ?? []).slice().sort().join(',');
+
   return useQuery<SelectedOrgUnitLayers>({
-    queryKey: ['selected-ou-layers', orgUnitId, opts?.program, opts?.grid3Url, stages.length],
+    queryKey: [
+      'selected-ou-layers',
+      orgUnitId,
+      opts?.program,
+      opts?.grid3Url,
+      stages.length,
+      selectedKey,
+      opts?.userFilter ?? '',
+    ],
     enabled: !!orgUnitId,
     staleTime: TEN_MIN,
     gcTime: TEN_MIN * 2,
@@ -127,6 +144,8 @@ export function useSelectedOrgUnitLayers(
             orgUnit: id,
             period: 'THIS_MONTH,LAST_MONTH',
             stages,
+            selectedDimensionIds: opts.selectedDimensionIds,
+            userFilter: opts.userFilter,
           });
           if (res) {
             coordinatePointsByDim = res.pointsByDimension;

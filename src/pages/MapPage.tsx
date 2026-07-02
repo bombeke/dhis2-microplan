@@ -13,6 +13,7 @@ import { fetchEnrollmentPoints, fetchEventPoints } from '../lib/dhis2Data';
 import { flagPoints, assignedByTeamFrom } from '../lib/flagging';
 import { useOrgUnitHierarchy } from '../hooks/useOrgUnits';
 import { useSelectedOrgUnitLayers } from '../hooks/useSelectedOrgUnitLayers';
+import { useUsers } from '../hooks/useUsers';
 import type { Settlement } from '../types';
 
 /**
@@ -26,12 +27,22 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
   const engine = useDataEngine();
   const { data: index = [] } = useMicroplanIndex();
   const { mapFilters, activeMicroplanIds, setActiveMicroplanIds, basemapId, overlays,
-    hiddenCoordinateDims } = useStore();
+    hiddenCoordinateDims, selectedDimensions } = useStore();
+  const { data: accessibleUsers = [] } = useUsers();
   const { data: hierarchy = [] } = useOrgUnitHierarchy();
 
   // The program the map draws events for comes from the FilterMap program
   // field; fall back to any program passed in by the shell.
   const program = mapFilters.programId ?? programProp;
+
+  // Step 1 — when a user is selected, resolve the username to filter analytics
+  // rows by (created/last-updated-by). No selection → no user filtering.
+  const userFilter = useMemo(() => {
+    if (!mapFilters.uploadedById) return null;
+    const u = accessibleUsers.find((x) => x.id === mapFilters.uploadedById);
+    // fall back to extracting from a "Name (username)" label if needed
+    return u?.username?.toLowerCase() || null;
+  }, [mapFilters.uploadedById, accessibleUsers]);
 
   // id -> path map from the cached hierarchy, for descendant-aware org filtering
   const orgUnitPaths = useMemo(() => {
@@ -44,7 +55,7 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
   // settlements highlighted by week, and DHIS2 event coordinates (clustered).
   const { data: selectedLayers, isFetching: selectedFetching } = useSelectedOrgUnitLayers(
     mapFilters.orgUnitId,
-    { program }
+    { program, selectedDimensionIds: selectedDimensions, userFilter }
   );
 
   // Apply the coordinate-layer overlay toggles: keep only points from

@@ -53,9 +53,11 @@ export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index
     for (const l of levelNames) m.set(l.level, l.name);
     return m;
   }, [levelNames]);
+
   const levelOptions: SearchOption[] = useMemo(() => {
     const set = new Set<number>();
-    for (const o of hierarchy) set.add(o.level);
+    //for (const o of hierarchy) set.add(o.level);
+    for (const o of levelNames) set.add(o.level);
     return [...set]
       .sort((a, b) => a - b)
       .map((l) => ({
@@ -80,7 +82,7 @@ export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index
       <SearchableSelect
         options={userOptions}
         value={mapFilters.uploadedById}
-        allLabel={usersLoading ? 'Loading users…' : 'All users'}
+        allLabel={usersLoading ? 'Loading teams…' : 'Teams'}
         placeholder="Search name or username…"
         bracketSublabel
         onChange={(id) => setMapFilter('uploadedById', id)}

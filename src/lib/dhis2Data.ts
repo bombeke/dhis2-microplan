@@ -44,6 +44,11 @@ export async function fetchProgramCoordinatePoints(
     period?: string;
     stages?: { id: string; name?: string }[];
     kindFilter?: 'attribute' | 'stageDataElement';
+    /** when set, restrict to just these analytics dimension ids (the
+     *  attributes / data elements the user picked in the FilterMap) */
+    selectedDimensionIds?: string[];
+    /** username to filter enrollment rows by (created/last-updated-by) */
+    userFilter?: string | null;
   }
 ): Promise<CoordinateAnalyticsResult | null> {
   // stages are optional; when omitted we still get attribute dimensions
@@ -54,6 +59,10 @@ export async function fetchProgramCoordinatePoints(
     stages
   );
   if (opts.kindFilter) dimensions = dimensions.filter((d) => d.kind === opts.kindFilter);
+  if (opts.selectedDimensionIds && opts.selectedDimensionIds.length > 0) {
+    const wanted = new Set(opts.selectedDimensionIds);
+    dimensions = dimensions.filter((d) => wanted.has(d.dimensionId));
+  }
   if (dimensions.length === 0) return null;
 
   return fetchEnrollmentCoordinateAnalytics(engine, {
@@ -61,6 +70,7 @@ export async function fetchProgramCoordinatePoints(
     orgUnit: opts.orgUnit,
     dimensions,
     period: opts.period,
+    userFilter: opts.userFilter ?? null,
   });
 }
 

@@ -45,6 +45,18 @@ export function parseCoordinateCell(value: unknown): Coord | null {
   return null;
 }
 
+/**
+ * Extract the username enclosed in the LAST parentheses of a display value.
+ * DHIS2 "…byDisplayName" columns look like "John Golla (golla)"; the "All users"
+ * option label is likewise "Name (username)". Returns the inner text lowercased,
+ * or null when there are no parentheses.
+ */
+export function extractParenValue(value: unknown): string | null {
+  if (value == null) return null;
+  const m = String(value).match(/\(([^)]*)\)\s*$/);
+  return m ? m[1].trim().toLowerCase() : null;
+}
+
 export async function fetchEnrollmentCoordinateAnalytics(
   engine: Engine,
   opts: {
@@ -54,6 +66,10 @@ export async function fetchEnrollmentCoordinateAnalytics(
     period?: string; // e.g. "THIS_MONTH,LAST_MONTH" or a fixed pe
     pageSize?: number;
     maxPages?: number;
+    /** username (already lowercased/extracted) to filter rows by; when set,
+     *  keep only rows whose createdbydisplayname OR lastupdatedbydisplayname
+     *  paren-value matches. When undefined, no user filtering is applied. */
+    userFilter?: string | null;
   }
 ): Promise<CoordinateAnalyticsResult> {
   const dims = opts.dimensions;
@@ -65,12 +81,19 @@ export async function fetchEnrollmentCoordinateAnalytics(
     return { pointsByDimension, metaDataItems, nonEmptyDimensionIds: [] };
   }
 
+  const userFilter = opts.userFilter ? opts.userFilter.toLowerCase() : null;
+
   const dimensionParam = [
     ...dims.map((d) => d.dimensionId),
     `ou:${opts.orgUnit}`,
   ].join(',');
-  // request the coordinate dimensions as output columns
-  const headers = dims.map((d) => d.dimensionId).join(',');
+  // Request the coordinate dimensions plus the created/last-updated-by display
+  // name columns (needed for the user filter in step 1).
+  const headers = [
+    'createdbydisplayname',
+    'lastupdatedbydisplayname',
+    ...dims.map((d) => d.dimensionId),
+  ].join(',');
 
   const pageSize = opts.pageSize ?? 100;
   const maxPages = opts.maxPages ?? 20;
@@ -113,8 +136,24 @@ export async function fetchEnrollmentCoordinateAnalytics(
     const enrIdx = respHeaders.findIndex(
       (h) => h.name === 'pi' || h.name === 'enrollment'
     );
+    // created-by / last-updated-by display-name columns, for the user filter
+    const createdByIdx = respHeaders.findIndex(
+      (h) => h.name === 'createdbydisplayname' || h.column === 'createdbydisplayname'
+    );
+    const lastUpdatedByIdx = respHeaders.findIndex(
+      (h) => h.name === 'lastupdatedbydisplayname' || h.column === 'lastupdatedbydisplayname'
+    );
 
     rows.forEach((row, r) => {
+      // Step 1 — user filter: keep the row only when the selected username
+      // matches the paren-value of createdbydisplayname OR lastupdatedbydisplayname.
+      if (userFilter) {
+        const createdBy = createdByIdx >= 0 ? extractParenValue(row[createdByIdx]) : null;
+        const lastUpdatedBy =
+          lastUpdatedByIdx >= 0 ? extractParenValue(row[lastUpdatedByIdx]) : null;
+        if (createdBy !== userFilter && lastUpdatedBy !== userFilter) return;
+      }
+
       const enrollmentId = enrIdx >= 0 ? String(row[enrIdx]) : `r${page}-${r}`;
       for (const d of dims) {
         const ci = colIndex[d.dimensionId];

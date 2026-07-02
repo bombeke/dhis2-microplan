@@ -11,12 +11,13 @@ const TEN_MIN = 10 * 60_000;
 export interface OrgUnitLevel {
   level: number;
   name: string;
+  id: string;
 }
 
 export function useOrgUnitLevels() {
   const engine = useDataEngine();
   return useQuery<OrgUnitLevel[]>({
-    queryKey: ['levels'],
+    queryKey: ['ou-levels'],
     staleTime: TEN_MIN,
     gcTime: TEN_MIN * 2,
     refetchOnWindowFocus: false,
@@ -25,7 +26,7 @@ export function useOrgUnitLevels() {
         levels: {
           resource: 'organisationUnitLevels',
           params: {
-            fields: 'level,displayName~rename(name)',
+            fields: 'id,level,displayName~rename(name)',
             order: 'level:asc',
             paging: 'false',
           },
@@ -34,6 +35,7 @@ export function useOrgUnitLevels() {
       return (data.levels.organisationUnitLevels ?? []).map((l: any) => ({
         level: l.level,
         name: l.name ?? `Level ${l.level}`,
+        id: l.id
       }));
     },
   });
