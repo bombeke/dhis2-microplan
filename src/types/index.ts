@@ -78,4 +78,5 @@ export interface GeoSourceConfig {
 export interface Dhis2Period {
   id: string; // e.g. LAST_MONTH, THIS_MONTH, 202506
   name: string;
+  group?: string; // relative-period group: Daily, Weekly, Monthly, ... Yearly
 }

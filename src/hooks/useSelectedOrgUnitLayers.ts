@@ -60,6 +60,7 @@ export function useSelectedOrgUnitLayers(
     grid3Url?: string;
     selectedDimensionIds?: string[];
     userFilter?: string | null;
+    analyticsPeriod?: string | null;
   }
 ) {
   const engine = useDataEngine();
@@ -81,6 +82,7 @@ export function useSelectedOrgUnitLayers(
       stages.length,
       selectedKey,
       opts?.userFilter ?? '',
+      opts?.analyticsPeriod ?? '',
     ],
     enabled: !!orgUnitId,
     staleTime: TEN_MIN,
@@ -142,7 +144,9 @@ export function useSelectedOrgUnitLayers(
           const res = await fetchProgramCoordinatePoints(engine as any, {
             program: opts.program,
             orgUnit: id,
-            period: 'THIS_MONTH,LAST_MONTH',
+            // selected relative period drives analytics lastUpdated; default to
+            // this+last month when the user hasn't picked one.
+            period: opts.analyticsPeriod || 'THIS_MONTH,LAST_MONTH',
             stages,
             selectedDimensionIds: opts.selectedDimensionIds,
             userFilter: opts.userFilter,

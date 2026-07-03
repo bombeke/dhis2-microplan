@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useStore } from '../store/useStore';
-import { RELATIVE_PERIODS } from '../lib/periods';
 import { SearchableSelect } from './SearchableSelect';
+import { PeriodSelect } from './PeriodSelect';
 import { OrgUnitTreeSelect } from './OrgUnitTreeSelect';
 import { ProgramSelect } from './ProgramSelect';
 import { GroupedMultiSelect } from './GroupedMultiSelect';
@@ -34,12 +34,6 @@ export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index
   const { data: users = [], isLoading: usersLoading } = useUsers();
   const { data: levelNames = [] } = useOrgUnitLevels();
 
-  const periods = useMemo(() => {
-    const set = new Set<string>();
-    for (const e of index) set.add(e.period);
-    return set;
-  }, [index]);
-
   // "All users": everyone the current user can access, shown as "Name (username)"
   // and searchable by either. Username lives in sublabel so FlexSearch indexes it.
   const userOptions: SearchOption[] = useMemo(
@@ -67,7 +61,6 @@ export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index
       }));
   }, [hierarchy, levelName]);
 
-  const periodName = (id: string) => RELATIVE_PERIODS.find((p) => p.id === id)?.name ?? id;
   const active =
     mapFilters.uploadedById ||
     mapFilters.period ||
@@ -88,15 +81,10 @@ export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index
         onChange={(id) => setMapFilter('uploadedById', id)}
       />
 
-      <select
-        value={mapFilters.period ?? ''}
-        onChange={(e) => setMapFilter('period', e.target.value || null)}
-      >
-        <option value="">All periods</option>
-        {[...periods].map((p) => (
-          <option key={p} value={p}>{periodName(p)}</option>
-        ))}
-      </select>
+      <PeriodSelect
+        value={mapFilters.period}
+        onChange={(id) => setMapFilter('period', id)}
+      />
 
       <SearchableSelect
         options={levelOptions}

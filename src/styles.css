@@ -270,3 +270,46 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 .gmsel__optname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gmsel__badge { font-size: 9px; text-transform: uppercase; letter-spacing: .4px;
   background: rgba(13,148,136,.14); color: var(--accent); padding: 1px 5px; border-radius: 4px; }
+
+/* ---- period select group headers (searchable grouped list) -------------- */
+.ssel__grouphead { padding: 8px 9px 4px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--faint); font-weight: 600; cursor: default; }
+.ssel__opt--indent { padding-left: 18px; }
+
+/* ---- analytics data panel (button + clean table) ------------------------ */
+.datapanel__fab { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+  z-index: 6; display: inline-flex; align-items: center; gap: 8px;
+  background: var(--accent); color: var(--accent-ink); border: none; border-radius: 999px;
+  padding: 10px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+  box-shadow: 0 6px 20px rgba(13,148,136,.35); transition: transform .12s, box-shadow .12s; }
+.datapanel__fab:hover:not(:disabled) { transform: translateX(-50%) translateY(-2px);
+  box-shadow: 0 10px 28px rgba(13,148,136,.45); }
+.datapanel__fab:disabled { background: var(--line); color: var(--muted); cursor: not-allowed;
+  box-shadow: none; }
+.datapanel__fab-icon { font-size: 14px; }
+.datapanel__fab-count { background: rgba(255,255,255,.25); border-radius: 999px;
+  padding: 1px 8px; font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.datapanel { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 7;
+  max-height: 55%; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: var(--shadow-lg); overflow: hidden; }
+.datapanel__head { display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.datapanel__title { font-size: 13px; font-weight: 600; }
+.datapanel__close { background: none; border: none; color: var(--muted); cursor: pointer;
+  font-size: 15px; line-height: 1; padding: 4px; border-radius: 6px; }
+.datapanel__close:hover { background: var(--panel2); color: var(--ink); }
+.datapanel__body { flex: 1; overflow: hidden; display: flex; }
+.datapanel__state { padding: 24px; color: var(--muted); font-size: 13px; margin: auto; }
+.datapanel__state--err { color: var(--flag); }
+.datapanel__scroll { flex: 1; overflow: auto; }
+
+.datatable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.datatable thead th { position: sticky; top: 0; background: var(--panel2); text-align: left;
+  padding: 9px 12px; font-weight: 600; color: var(--ink); white-space: nowrap;
+  border-bottom: 1px solid var(--line); }
+.datatable tbody td { padding: 8px 12px; border-bottom: 1px solid var(--line);
+  white-space: nowrap; color: var(--ink); }
+.datatable tbody tr:hover { background: var(--panel2); }
+.datatable tbody tr:last-child td { border-bottom: none; }

@@ -181,3 +181,96 @@ export async function fetchEnrollmentCoordinateAnalytics(
 
   return { pointsByDimension, metaDataItems, nonEmptyDimensionIds };
 }
+
+export interface AnalyticsTableColumn {
+  name: string; // dimension/column id, e.g. "jJ82mWtkUW5" or "pi"
+  label: string; // human label (from metaData.items or column header)
+}
+
+export interface AnalyticsTable {
+  columns: AnalyticsTableColumn[];
+  rows: string[][];
+  total: number;
+}
+
+/**
+ * Retrieve the raw enrollment-analytics table (headers + rows) for display in a
+ * data table. Uses the same coordinate dimensions + created/last-updated-by
+ * columns and the same user/period filters as the point fetch, so the table
+ * matches what's drawn on the map.
+ */
+export async function fetchEnrollmentAnalyticsTable(
+  engine: Engine,
+  opts: {
+    program: string;
+    orgUnit: string;
+    dimensions: CoordinateDimension[];
+    period?: string;
+    userFilter?: string | null;
+    pageSize?: number;
+    maxPages?: number;
+  }
+): Promise<AnalyticsTable> {
+  const dims = opts.dimensions;
+  const userFilter = opts.userFilter ? opts.userFilter.toLowerCase() : null;
+
+  const baseHeaders = ['ouname', 'createdbydisplayname', 'lastupdatedbydisplayname', 'lastupdated'];
+  const dimHeaders = dims.map((d) => d.dimensionId);
+  const dimensionParam = [...dimHeaders, `ou:${opts.orgUnit}`].join(',');
+  const headers = [...baseHeaders, ...dimHeaders].join(',');
+
+  const pageSize = opts.pageSize ?? 100;
+  const maxPages = opts.maxPages ?? 20;
+
+  let columns: AnalyticsTableColumn[] = [];
+  const rows: string[][] = [];
+  let createdByIdx = -1;
+  let lastUpdatedByIdx = -1;
+
+  for (let page = 1; page <= maxPages; page++) {
+    const data: any = await engine.query({
+      a: {
+        resource: `analytics/enrollments/query/${opts.program}`,
+        params: {
+          dimension: dimensionParam,
+          headers,
+          outputType: 'ENROLLMENT',
+          displayProperty: 'NAME',
+          totalPages: 'false',
+          rowContext: 'true',
+          includeMetadataDetails: 'true',
+          ...(opts.period ? { lastUpdated: opts.period } : {}),
+          pageSize,
+          page,
+        },
+      },
+    });
+    const resp = data.a;
+    const respHeaders: any[] = resp?.headers ?? [];
+    const respRows: any[][] = resp?.rows ?? [];
+    const items: Record<string, any> = resp?.metaData?.items ?? {};
+
+    if (page === 1) {
+      columns = respHeaders.map((h) => ({
+        name: h.name,
+        label: items[h.name]?.name ?? h.column ?? h.name,
+      }));
+      createdByIdx = respHeaders.findIndex((h) => h.name === 'createdbydisplayname');
+      lastUpdatedByIdx = respHeaders.findIndex((h) => h.name === 'lastupdatedbydisplayname');
+    }
+    if (respRows.length === 0) break;
+
+    for (const row of respRows) {
+      if (userFilter) {
+        const c = createdByIdx >= 0 ? extractParenValue(row[createdByIdx]) : null;
+        const l = lastUpdatedByIdx >= 0 ? extractParenValue(row[lastUpdatedByIdx]) : null;
+        if (c !== userFilter && l !== userFilter) continue;
+      }
+      rows.push(row.map((v) => (v == null ? '' : String(v))));
+    }
+
+    if (respRows.length < pageSize) break;
+  }
+
+  return { columns, rows, total: rows.length };
+}

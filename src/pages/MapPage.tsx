@@ -8,6 +8,7 @@ import { MapFilterBar, filterIndex } from '../components/MapFilterBar';
 import { Dhis2Map, type MicroplanLayerData } from '../components/Dhis2Map';
 import { LayerControl } from '../components/LayerControl';
 import { CoordinateLayerControl } from '../components/CoordinateLayerControl';
+import { AnalyticsDataPanel } from '../components/AnalyticsDataPanel';
 import { getBasemap } from '../lib/basemaps';
 import { fetchEnrollmentPoints, fetchEventPoints } from '../lib/dhis2Data';
 import { flagPoints, assignedByTeamFrom } from '../lib/flagging';
@@ -55,7 +56,12 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
   // settlements highlighted by week, and DHIS2 event coordinates (clustered).
   const { data: selectedLayers, isFetching: selectedFetching } = useSelectedOrgUnitLayers(
     mapFilters.orgUnitId,
-    { program, selectedDimensionIds: selectedDimensions, userFilter }
+    {
+      program,
+      selectedDimensionIds: selectedDimensions,
+      userFilter,
+      analyticsPeriod: mapFilters.period,
+    }
   );
 
   // Apply the coordinate-layer overlay toggles: keep only points from
@@ -197,6 +203,13 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
             ))}
           </div>
         )}
+        <AnalyticsDataPanel
+          program={program}
+          orgUnitId={mapFilters.orgUnitId}
+          period={mapFilters.period}
+          userFilter={userFilter}
+          selectedDimensionIds={selectedDimensions}
+        />
       </div>
     </div>
   );
