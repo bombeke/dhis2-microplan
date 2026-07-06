@@ -2,10 +2,9 @@ import React, { useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import { SearchableSelect } from './SearchableSelect';
 import { PeriodSelect } from './PeriodSelect';
-import { OrgUnitTreeSelect } from './OrgUnitTreeSelect';
+import { OrgUnitLazyTreeSelect } from './OrgUnitLazyTreeSelect';
 import { ProgramSelect } from './ProgramSelect';
 import { GroupedMultiSelect } from './GroupedMultiSelect';
-import { useOrgUnitHierarchy } from '../hooks/useOrgUnits';
 import { useProgramDimensions } from '../hooks/useProgramDimensions';
 import { useUsers } from '../hooks/useUsers';
 import { useOrgUnitLevels } from '../hooks/useOrgUnitLevels';
@@ -16,13 +15,9 @@ import type { MicroplanIndexEntry } from '../lib/microplanStore';
  * Filters the uploaded-microplan catalogue by user, period (month), org-unit
  * level, and organisation unit.
  *
- * Org units come from the WHOLE org-unit hierarchy (cached for 10 min via
- * useOrgUnitHierarchy, no server refetch within that window), not just the org
- * units that happen to appear in uploads — so you can filter the map down to
- * any unit in the tree. Levels are likewise derived from the full hierarchy.
- * The high-cardinality user + org-unit pickers use the FlexSearch-backed
- * SearchableSelect so they stay fast over large trees; period stays a plain
- * select.
+ * Org units use a lazy tree picker (loads roots, then children on demand,
+ * server-side name search) so there is no upfront whole-hierarchy download.
+ * Levels come from the organisationUnitLevels metadata.
  */
 export const MapFilterBar: React.FC<{
   index: MicroplanIndexEntry[];
@@ -32,7 +27,6 @@ export const MapFilterBar: React.FC<{
   const { data: dimensionGroups = [], isLoading: dimsLoading } = useProgramDimensions(
     mapFilters.programId
   );
-  const { data: hierarchy = [] } = useOrgUnitHierarchy();
   const { data: users = [], isLoading: usersLoading } = useUsers();
   const { data: levelNames = [] } = useOrgUnitLevels();
 
@@ -44,24 +38,16 @@ export const MapFilterBar: React.FC<{
   );
 
   // Levels present in the hierarchy, labelled with their level name when known.
-  const levelName = useMemo(() => {
-    const m = new Map<number, string>();
-    for (const l of levelNames) m.set(l.level, l.name);
-    return m;
-  }, [levelNames]);
 
   const levelOptions: SearchOption[] = useMemo(() => {
-    const set = new Set<number>();
-    //for (const o of hierarchy) set.add(o.level);
-    for (const o of levelNames) set.add(o.level);
-    return [...set]
-      .sort((a, b) => a - b)
+    return [...levelNames]
+      .sort((a, b) => a.level - b.level)
       .map((l) => ({
-        id: String(l),
-        label: levelName.get(l) ?? `Level ${l}`,
-        sublabel: `Level ${l}`,
+        id: String(l.level),
+        label: l.name ?? `Level ${l.level}`,
+        sublabel: `Level ${l.level}`,
       }));
-  }, [hierarchy, levelName]);
+  }, [levelNames]);
 
   const active =
     mapFilters.uploadedById ||
@@ -97,7 +83,7 @@ export const MapFilterBar: React.FC<{
         onChange={(id) => setMapFilter('level', id ? Number(id) : null)}
       />
 
-      <OrgUnitTreeSelect
+      <OrgUnitLazyTreeSelect
         value={mapFilters.orgUnitId}
         onChange={(id) => setMapFilter('orgUnitId', id)}
       />

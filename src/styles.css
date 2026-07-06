@@ -313,3 +313,6 @@ body { margin: 0; background: var(--bg); color: var(--ink);
   white-space: nowrap; color: var(--ink); }
 .datatable tbody tr:hover { background: var(--panel2); }
 .datatable tbody tr:last-child td { border-bottom: none; }
+
+/* ---- lazy org-unit tree loading hint ------------------------------------ */
+.outree__loading { font-size: 12px; color: var(--muted); padding: 4px 0; font-style: italic; }

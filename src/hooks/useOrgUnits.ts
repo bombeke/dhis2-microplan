@@ -241,3 +241,116 @@ export function useOrgUnitTree(enabled = true) {
   const tree = useMemo(() => buildOrgTree(flat), [flat]);
   return { ...q, flat, tree };
 }
+/**
+ * Server-side org-unit search by name, for the lazy tree picker. Avoids loading
+ * the whole hierarchy: we ask the API for units whose name matches the query
+ * (debounced by the caller), returning each with its `path` and `level` so the
+ * picker can show ancestry. Only runs when the query is long enough.
+ */
+export interface OrgUnitSearchHit {
+  id: string;
+  name: string;
+  level: number;
+  path: string;
+  parentId: string | null;
+}
+
+export function useOrgUnitSearch(query: string, enabled = true) {
+  const engine = useDataEngine();
+  const q = query.trim();
+  return useQuery<OrgUnitSearchHit[]>({
+    queryKey: ['ou-search', q],
+    enabled: enabled && q.length >= 2,
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
+    queryFn: async () => {
+      const data: any = await engine.query({
+        ou: {
+          resource: 'organisationUnits',
+          params: {
+            query: q,
+            fields: 'id,displayName~rename(name),level,path,parent[id]',
+            order: 'level:asc,displayName:asc',
+            pageSize: 50,
+            page: 1,
+          },
+        },
+      });
+      return (data.ou.organisationUnits ?? []).map((o: any) => ({
+        id: o.id,
+        name: o.name ?? o.displayName,
+        level: o.level,
+        path: o.path ?? '',
+        parentId: o.parent?.id ?? null,
+      }));
+    },
+  });
+}
+
+/**
+ * Fetch specific org units by id (used to resolve the currently-selected node's
+ * label without loading the whole tree).
+ */
+export function useOrgUnitsByIds(ids: string[]) {
+  const engine = useDataEngine();
+  const key = ids.slice().sort().join(',');
+  return useQuery<Record<string, { id: string; name: string; level: number }>>({
+    queryKey: ['ou-by-ids', key],
+    enabled: ids.length > 0,
+    staleTime: 10 * 60_000,
+    queryFn: async () => {
+      const data: any = await engine.query({
+        ou: {
+          resource: 'organisationUnits',
+          params: {
+            filter: [`id:in:[${ids.join(',')}]`],
+            fields: 'id,displayName~rename(name),level',
+            paging: 'false',
+          },
+        },
+      });
+      const map: Record<string, { id: string; name: string; level: number }> = {};
+      for (const o of data.ou.organisationUnits ?? []) {
+        map[o.id] = { id: o.id, name: o.name ?? o.displayName, level: o.level };
+      }
+      return map;
+    },
+  });
+}
+
+/**
+ * Resolve just the `path` for a set of org-unit ids (used for descendant-aware
+ * filtering without loading the whole hierarchy). Cached; only the ids actually
+ * needed (uploaded microplans' org units + the selected unit) are fetched.
+ */
+export function useOrgUnitPaths(ids: string[]) {
+  const engine = useDataEngine();
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  const key = unique.slice().sort().join(',');
+  return useQuery<Map<string, string>>({
+    queryKey: ['ou-paths', key],
+    enabled: unique.length > 0,
+    staleTime: 10 * 60_000,
+    gcTime: 20 * 60_000,
+    queryFn: async () => {
+      const out = new Map<string, string>();
+      // chunk to keep the id:in filter within limits
+      const chunkSize = 200;
+      for (let i = 0; i < unique.length; i += chunkSize) {
+        const chunk = unique.slice(i, i + chunkSize);
+        const data: any = await engine.query({
+          ou: {
+            resource: 'organisationUnits',
+            params: {
+              filter: [`id:in:[${chunk.join(',')}]`],
+              fields: 'id,path',
+              paging: 'false',
+            },
+          },
+        });
+        for (const o of data.ou.organisationUnits ?? []) out.set(o.id, o.path ?? '');
+      }
+      return out;
+    },
+  });
+}

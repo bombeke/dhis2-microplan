@@ -15,7 +15,7 @@ import { AnalyticsDataPanel } from '../components/AnalyticsDataPanel';
 import { getBasemap } from '../lib/basemaps';
 import { fetchEnrollmentPoints, fetchEventPoints } from '../lib/dhis2Data';
 import { flagPoints, assignedByTeamFrom } from '../lib/flagging';
-import { useOrgUnitHierarchy } from '../hooks/useOrgUnits';
+import { useOrgUnitPaths } from '../hooks/useOrgUnits';
 import { useSelectedOrgUnitLayers } from '../hooks/useSelectedOrgUnitLayers';
 import { useSettlementGeoservice } from '../hooks/useSettlementGeoservice';
 import { useUsers } from '../hooks/useUsers';
@@ -33,7 +33,6 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
   const { mapFilters, activeMicroplanIds, setActiveMicroplanIds, basemapId, overlays,
     hiddenCoordinateDims, selectedDimensions } = useStore();
   const { data: accessibleUsers = [] } = useUsers();
-  const { data: hierarchy = [] } = useOrgUnitHierarchy();
 
   // The program the map draws events for comes from the FilterMap program
   // field; fall back to any program passed in by the shell.
@@ -57,12 +56,14 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
     return u?.username || null;
   }, [mapFilters.uploadedById, accessibleUsers]);
 
-  // id -> path map from the cached hierarchy, for descendant-aware org filtering
-  const orgUnitPaths = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const o of hierarchy) m.set(o.id, o.path);
-    return m;
-  }, [hierarchy]);
+  // Descendant-aware org filtering needs the path of each uploaded microplan's
+  // org unit (plus the selected unit) - a small, targeted fetch.
+  const pathIds = useMemo(() => {
+    const ids = index.map((e) => e.orgUnitId);
+    if (mapFilters.orgUnitId) ids.push(mapFilters.orgUnitId);
+    return ids;
+  }, [index, mapFilters.orgUnitId]);
+  const { data: orgUnitPaths = new Map<string, string>() } = useOrgUnitPaths(pathIds);
 
   // Selected-org-unit overlays: GRID3 settlements (spatial), uploaded
   // settlements highlighted by week, and DHIS2 event coordinates (clustered).
