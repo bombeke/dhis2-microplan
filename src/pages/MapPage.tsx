@@ -4,6 +4,9 @@ import { useQueries } from '@tanstack/react-query';
 import { useStore } from '../store/useStore';
 import { useMicroplanIndex } from '../hooks/useMicroplans';
 import { loadMicroplan } from '../lib/microplanStore';
+import type { StoredMicroplan } from '../lib/microplanStore';
+import { weekSettlementsFromTeamPlans } from '../lib/teamSettlements';
+import type { Settlement, TeamPlan } from '../types';
 import { MapFilterBar, filterIndex } from '../components/MapFilterBar';
 import { Dhis2Map, type MicroplanLayerData } from '../components/Dhis2Map';
 import { LayerControl } from '../components/LayerControl';
@@ -14,8 +17,8 @@ import { fetchEnrollmentPoints, fetchEventPoints } from '../lib/dhis2Data';
 import { flagPoints, assignedByTeamFrom } from '../lib/flagging';
 import { useOrgUnitHierarchy } from '../hooks/useOrgUnits';
 import { useSelectedOrgUnitLayers } from '../hooks/useSelectedOrgUnitLayers';
+import { useSettlementGeoservice } from '../hooks/useSettlementGeoservice';
 import { useUsers } from '../hooks/useUsers';
-import type { Settlement } from '../types';
 
 /**
  * Map page. The catalogue is filtered (user/period/level/org unit); the
@@ -45,6 +48,15 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
     return u?.username?.toLowerCase() || null;
   }, [mapFilters.uploadedById, accessibleUsers]);
 
+  // The selected TEAM CODE is the selected user's username — e.g. a user shown
+  // as "kabad (DHK-ID)" yields team code "DHK-ID". Preserve original case so it
+  // matches teamPlans[].teamCode; matching itself is case-insensitive.
+  const selectedTeamCode = useMemo(() => {
+    if (!mapFilters.uploadedById) return null;
+    const u = accessibleUsers.find((x) => x.id === mapFilters.uploadedById);
+    return u?.username || null;
+  }, [mapFilters.uploadedById, accessibleUsers]);
+
   // id -> path map from the cached hierarchy, for descendant-aware org filtering
   const orgUnitPaths = useMemo(() => {
     const m = new Map<string, string>();
@@ -61,8 +73,18 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
       selectedDimensionIds: selectedDimensions,
       userFilter,
       analyticsPeriod: mapFilters.period,
+      uploadedById: mapFilters.uploadedById,
     }
   );
+
+  // Step 1+2: for the selected user's week settlements, fetch their geojson
+  // from the Settlements_in_Nigeria geoservice (searched by name) and merge
+  // into one FeatureCollection for the map's fill layer.
+  const { data: weekGeojson } = useSettlementGeoservice(selectedLayers?.weekSettlements);
+  const settlementGeojson = useMemo<GeoJSON.FeatureCollection>(() => {
+    const features = (weekGeojson ?? []).flatMap((w) => w.geojson.features);
+    return { type: 'FeatureCollection', features };
+  }, [weekGeojson]);
 
   // Apply the coordinate-layer overlay toggles: keep only points from
   // dimensions the user hasn't hidden. Also count points per dimension for the
@@ -153,6 +175,34 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsToShow.join(','), planQueries.map((q) => q.dataUpdatedAt).join(','), pointQueries.map((q) => q.dataUpdatedAt).join(',')]);
 
+  // Aggregate team plans across the loaded microplans → team-code options for
+  // the "All Teams" field, and the week-grouped settlement NAMES for the
+  // selected team (settlement names are extracted from the visit keys).
+  const allTeamPlans = useMemo(() => {
+    const plans: TeamPlan[] = [];
+    for (const q of planQueries) {
+      const p = q?.data as StoredMicroplan | undefined;
+      if (p?.teamPlans) plans.push(...p.teamPlans);
+    }
+    return plans;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planQueries.map((q) => q.dataUpdatedAt).join(',')]);
+
+  const teamWeekSettlements = useMemo(
+    () =>
+      selectedTeamCode
+        ? weekSettlementsFromTeamPlans(allTeamPlans, { teamCode: selectedTeamCode })
+        : [],
+    [allTeamPlans, selectedTeamCode]
+  );
+
+  // fetch geoservice geojson for the team-derived settlement names, then merge
+  const { data: teamWeekGeojson } = useSettlementGeoservice(teamWeekSettlements);
+  const teamSettlementGeojson = useMemo<GeoJSON.FeatureCollection>(() => {
+    const features = (teamWeekGeojson ?? []).flatMap((w) => w.geojson.features);
+    return { type: 'FeatureCollection', features };
+  }, [teamWeekGeojson]);
+
   const loading =
     planQueries.some((q) => q.isLoading) || pointQueries.some((q) => q.isLoading) || selectedFetching;
 
@@ -166,6 +216,8 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
           overlays={overlays}
           loading={loading}
           selected={visibleSelected}
+          settlementGeojson={settlementGeojson}
+          teamSettlementGeojson={teamSettlementGeojson}
         />
         <div className="map-controls">
           <LayerControl />
@@ -186,6 +238,12 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
               {' '}· <strong>{selectedLayers.grid3.length}</strong> GRID3
               {selectedLayers.grid3Truncated ? '+' : ''} ·{' '}
               <strong>{selectedLayers.eventPoints.length}</strong> events
+            </>
+          )}
+          {selectedTeamCode && teamSettlementGeojson.features.length > 0 && (
+            <>
+              {' '}· <strong>{teamSettlementGeojson.features.length}</strong> team settlements
+              {' '}(vs <strong>{settlementGeojson.features.length}</strong> user)
             </>
           )}
         </div>

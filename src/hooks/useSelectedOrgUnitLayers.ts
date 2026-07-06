@@ -61,6 +61,7 @@ export function useSelectedOrgUnitLayers(
     selectedDimensionIds?: string[];
     userFilter?: string | null;
     analyticsPeriod?: string | null;
+    uploadedById?: string | null;
   }
 ) {
   const engine = useDataEngine();
@@ -83,6 +84,7 @@ export function useSelectedOrgUnitLayers(
       selectedKey,
       opts?.userFilter ?? '',
       opts?.analyticsPeriod ?? '',
+      opts?.uploadedById ?? '',
     ],
     enabled: !!orgUnitId,
     staleTime: TEN_MIN,
@@ -111,7 +113,13 @@ export function useSelectedOrgUnitLayers(
       const weekMap = new Map<number, Map<string, Settlement>>();
       try {
         const index = await readIndex(engine as any);
-        const forOu = index.filter((e) => e.orgUnitId === id);
+        // filter uploads to this org unit, and (when a user is selected) to
+        // microplans uploaded by that user — "for a selected user".
+        const forOu = index.filter(
+          (e) =>
+            e.orgUnitId === id &&
+            (!opts?.uploadedById || e.uploadedById === opts.uploadedById)
+        );
         for (const entry of forOu) {
           const plan = await loadMicroplan(engine as any, entry.id);
           if (!plan) continue;

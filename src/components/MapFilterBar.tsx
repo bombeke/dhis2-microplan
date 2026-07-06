@@ -24,7 +24,9 @@ import type { MicroplanIndexEntry } from '../lib/microplanStore';
  * SearchableSelect so they stay fast over large trees; period stays a plain
  * select.
  */
-export const MapFilterBar: React.FC<{ index: MicroplanIndexEntry[] }> = ({ index }) => {
+export const MapFilterBar: React.FC<{
+  index: MicroplanIndexEntry[];
+}> = ({ index }) => {
   const { mapFilters, setMapFilter, resetMapFilters, selectedDimensions, setSelectedDimensions } =
     useStore();
   const { data: dimensionGroups = [], isLoading: dimsLoading } = useProgramDimensions(

@@ -43,6 +43,8 @@ const SRC = {
   grid3: 'sel-grid3',
   weeks: 'sel-weeks',
   events: 'sel-events',
+  geoservice: 'sel-geoservice',
+  teamGeoservice: 'sel-team-geoservice',
 } as const;
 
 const LYR = {
@@ -60,6 +62,10 @@ const LYR = {
   eventClusters: 'sel-event-clusters',
   eventClusterCount: 'sel-event-cluster-count',
   eventPoint: 'sel-event-point',
+  geoserviceFill: 'sel-geoservice-fill',
+  geoserviceLine: 'sel-geoservice-line',
+  teamGeoserviceFill: 'sel-team-geoservice-fill',
+  teamGeoserviceLine: 'sel-team-geoservice-line',
 } as const;
 
 // Per-week highlight colours (weeks 1..5) for the uploaded-settlement overlay.
@@ -142,7 +148,9 @@ export const Dhis2Map: React.FC<{
   overlays?: OverlayToggles;
   loading?: boolean;
   selected?: SelectedOrgUnitLayers | null;
-}> = ({ microplans, basemap, overlays, loading, selected }) => {
+  settlementGeojson?: GeoJSON.FeatureCollection | null;
+  teamSettlementGeojson?: GeoJSON.FeatureCollection | null;
+}> = ({ microplans, basemap, overlays, loading, selected, settlementGeojson, teamSettlementGeojson }) => {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -577,6 +585,139 @@ export const Dhis2Map: React.FC<{
     if (!map) return;
     whenReady(map, mountSelected);
   }, [mountSelected, whenReady]);
+
+  // ---- settlement geoservice fill layer (step 2: type='fill') -------------
+  const mountGeoservice = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const fc: GeoJSON.FeatureCollection =
+      settlementGeojson ?? { type: 'FeatureCollection', features: [] };
+    // colour each feature by its week (falls back to teal)
+    const colored: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: fc.features.map((f) => ({
+        ...f,
+        properties: {
+          ...(f.properties ?? {}),
+          color: WEEK_COLORS[(f.properties as any)?.week] ?? '#0d9488',
+        },
+      })),
+    };
+    upsertGeoJson(map, SRC.geoservice, colored.features);
+
+    if (!map.getLayer(LYR.geoserviceFill)) {
+      map.addLayer({
+        id: LYR.geoserviceFill,
+        type: 'fill', // step 2 explicitly asks for a fill layer
+        source: SRC.geoservice,
+        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.45 },
+      });
+      map.addLayer({
+        id: LYR.geoserviceLine,
+        type: 'line',
+        source: SRC.geoservice,
+        paint: { 'line-color': ['get', 'color'], 'line-width': 1 },
+      });
+      map.on('click', LYR.geoserviceFill, (e) => {
+        const p = e.features?.[0]?.properties as any;
+        if (!p) return;
+        openPopup(
+          map,
+          `<div class="map-popup__title">${escapeHtml(String(p.set_name ?? 'Settlement'))}</div>` +
+            (p.week ? rowHtml('Outreach week', `Week ${p.week}`) : '') +
+            (p.wardname ? rowHtml('Ward', String(p.wardname)) : '') +
+            (p.lganame ? rowHtml('LGA', String(p.lganame)) : '') +
+            (p.statename ? rowHtml('State', String(p.statename)) : ''),
+          [e.lngLat.lng, e.lngLat.lat]
+        );
+      });
+      map.on('mouseenter', LYR.geoserviceFill, () => (map.getCanvas().style.cursor = 'pointer'));
+      map.on('mouseleave', LYR.geoserviceFill, () => (map.getCanvas().style.cursor = ''));
+    }
+
+    if (colored.features.length) {
+      try {
+        const b = bbox(colored);
+        map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 60, maxZoom: 14, duration: 600 });
+      } catch {
+        /* ignore */
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settlementGeojson, openPopup]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    whenReady(map, mountGeoservice);
+  }, [mountGeoservice, whenReady]);
+
+  // ---- team-based settlement fill layer (from uploaded teamPlans) ----------
+  // An ADDITIONAL fill layer (distinct from the user/geoservice layer above),
+  // showing settlements for the selected team, coloured by week with a stronger
+  // dashed outline so it reads as a separate overlay.
+  const mountTeamGeoservice = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const fc: GeoJSON.FeatureCollection =
+      teamSettlementGeojson ?? { type: 'FeatureCollection', features: [] };
+    const colored: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: fc.features.map((f) => ({
+        ...f,
+        properties: {
+          ...(f.properties ?? {}),
+          color: WEEK_COLORS[(f.properties as any)?.week] ?? '#0d9488',
+        },
+      })),
+    };
+    upsertGeoJson(map, SRC.teamGeoservice, colored.features);
+
+    if (!map.getLayer(LYR.teamGeoserviceFill)) {
+      map.addLayer({
+        id: LYR.teamGeoserviceFill,
+        type: 'fill',
+        source: SRC.teamGeoservice,
+        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.3 },
+      });
+      map.addLayer({
+        id: LYR.teamGeoserviceLine,
+        type: 'line',
+        source: SRC.teamGeoservice,
+        paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [2, 1] },
+      });
+      map.on('click', LYR.teamGeoserviceFill, (e) => {
+        const p = e.features?.[0]?.properties as any;
+        if (!p) return;
+        openPopup(
+          map,
+          `<div class="map-popup__title">${escapeHtml(String(p.set_name ?? 'Settlement'))}</div>` +
+            (p.week ? rowHtml('Team week', `Week ${p.week}`) : '') +
+            (p.wardname ? rowHtml('Ward', String(p.wardname)) : '') +
+            (p.lganame ? rowHtml('LGA', String(p.lganame)) : ''),
+          [e.lngLat.lng, e.lngLat.lat]
+        );
+      });
+      map.on('mouseenter', LYR.teamGeoserviceFill, () => (map.getCanvas().style.cursor = 'pointer'));
+      map.on('mouseleave', LYR.teamGeoserviceFill, () => (map.getCanvas().style.cursor = ''));
+    }
+
+    if (colored.features.length) {
+      try {
+        const b = bbox(colored);
+        map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 60, maxZoom: 14, duration: 600 });
+      } catch {
+        /* ignore */
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamSettlementGeojson, openPopup]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    whenReady(map, mountTeamGeoservice);
+  }, [mountTeamGeoservice, whenReady]);
 
   return (
     <div className="mapview-wrap" style={{ position: 'relative', height: '70vh', width: '100%' }}>
