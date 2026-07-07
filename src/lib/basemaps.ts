@@ -85,6 +85,10 @@ export interface OverlayToggles {
   points: boolean; // donutCluster tracker/event points
   flagged: boolean; // out-of-bounds points
   boundaries: boolean; // org-unit boundary context
+  // Settlement boundaries resolved from the geoservice (team + user week
+  // settlements) and the GRID3 extents. Toggling this draws/hides those
+  // boundary outlines + fills without a refetch.
+  settlementBoundaries: boolean;
 }
 
 export const DEFAULT_OVERLAYS: OverlayToggles = {
@@ -92,4 +96,5 @@ export const DEFAULT_OVERLAYS: OverlayToggles = {
   points: true,
   flagged: true,
   boundaries: false,
+  settlementBoundaries: true,
 };

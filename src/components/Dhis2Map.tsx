@@ -106,6 +106,13 @@ const escapeHtml = (s: string) =>
 const rowHtml = (label: string, value: string) =>
   `<div class="map-popup__row"><span>${escapeHtml(label)}</span><span>${escapeHtml(value)}</span></div>`;
 
+/** Toggle a layer's visibility, no-op if the layer isn't mounted yet. */
+function setLayerVisible(map: maplibregl.Map, layerId: string, visible: boolean) {
+  if (map.getLayer(layerId)) {
+    map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+  }
+}
+
 /** Create or update a plain (non-clustered) GeoJSON source. */
 function upsertGeoJson(map: maplibregl.Map, id: string, features: GeoJSON.Feature[]) {
   const data: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
@@ -157,7 +164,13 @@ export const Dhis2Map: React.FC<{
   const readyRef = useRef(false);
 
   const ov: OverlayToggles =
-    overlays ?? { settlements: true, points: true, flagged: true, boundaries: false };
+    overlays ?? {
+      settlements: true,
+      points: true,
+      flagged: true,
+      boundaries: false,
+      settlementBoundaries: true,
+    };
 
   /** Run a fn once the style is loaded; queue it on 'load' otherwise. */
   const whenReady = useCallback((map: maplibregl.Map, fn: () => void) => {
@@ -567,6 +580,12 @@ export const Dhis2Map: React.FC<{
       });
     }
 
+    // honour the settlement-boundaries toggle for the GRID3 extents + the
+    // by-week uploaded-settlement boundaries.
+    for (const l of [LYR.grid3Fill, LYR.grid3Line, LYR.weeksFill, LYR.weeksLine]) {
+      setLayerVisible(map, l, ov.settlementBoundaries);
+    }
+
     // fit to the selected unit's data on first population
     const fitFeatures = [...grid3Features, ...weekFeatures, ...eventFeatures];
     if (fitFeatures.length) {
@@ -578,7 +597,7 @@ export const Dhis2Map: React.FC<{
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, openPopup]);
+  }, [selected, openPopup, ov.settlementBoundaries]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -635,6 +654,10 @@ export const Dhis2Map: React.FC<{
       map.on('mouseleave', LYR.geoserviceFill, () => (map.getCanvas().style.cursor = ''));
     }
 
+    for (const l of [LYR.geoserviceFill, LYR.geoserviceLine]) {
+      setLayerVisible(map, l, ov.settlementBoundaries);
+    }
+
     if (colored.features.length) {
       try {
         const b = bbox(colored);
@@ -644,7 +667,7 @@ export const Dhis2Map: React.FC<{
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settlementGeojson, openPopup]);
+  }, [settlementGeojson, openPopup, ov.settlementBoundaries]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -702,6 +725,10 @@ export const Dhis2Map: React.FC<{
       map.on('mouseleave', LYR.teamGeoserviceFill, () => (map.getCanvas().style.cursor = ''));
     }
 
+    for (const l of [LYR.teamGeoserviceFill, LYR.teamGeoserviceLine]) {
+      setLayerVisible(map, l, ov.settlementBoundaries);
+    }
+
     if (colored.features.length) {
       try {
         const b = bbox(colored);
@@ -711,7 +738,7 @@ export const Dhis2Map: React.FC<{
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teamSettlementGeojson, openPopup]);
+  }, [teamSettlementGeojson, openPopup, ov.settlementBoundaries]);
 
   useEffect(() => {
     const map = mapRef.current;

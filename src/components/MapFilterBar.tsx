@@ -52,7 +52,7 @@ export const MapFilterBar: React.FC<{
   const active =
     mapFilters.uploadedById ||
     mapFilters.period ||
-    mapFilters.level ||
+   // mapFilters.level ||
     mapFilters.orgUnitId ||
     mapFilters.programId;
 
@@ -67,20 +67,6 @@ export const MapFilterBar: React.FC<{
         placeholder="Search name or username…"
         bracketSublabel
         onChange={(id) => setMapFilter('uploadedById', id)}
-      />
-
-      <PeriodSelect
-        value={mapFilters.period}
-        onChange={(id) => setMapFilter('period', id)}
-      />
-
-      <SearchableSelect
-        options={levelOptions}
-        value={mapFilters.level != null ? String(mapFilters.level) : null}
-        allLabel="All levels"
-        placeholder="Search levels…"
-        bracketSublabel
-        onChange={(id) => setMapFilter('level', id ? Number(id) : null)}
       />
 
       <OrgUnitLazyTreeSelect
@@ -104,6 +90,19 @@ export const MapFilterBar: React.FC<{
           loading={dimsLoading}
         />
       )}
+      <PeriodSelect
+        value={mapFilters.period}
+        onChange={(id) => setMapFilter('period', id)}
+      />
+
+      <SearchableSelect
+        options={levelOptions}
+        value={mapFilters.level != null ? String(mapFilters.level) : null}
+        allLabel="All levels"
+        placeholder="Search levels…"
+        bracketSublabel
+        onChange={(id) => setMapFilter('level', id ? Number(id) : null)}
+      />
 
       {active && (
         <button className="filterbar__reset" onClick={resetMapFilters}>Clear</button>
@@ -129,7 +128,7 @@ export function filterIndex(
     if (f.uploadedById && e.uploadedById !== f.uploadedById) return false;
     if (f.programId && e.programId !== f.programId) return false;
     if (f.period && e.period !== f.period) return false;
-    if (f.level != null && e.level !== f.level) return false;
+    //if (f.level != null && e.level !== f.level) return false;
     if (f.orgUnitId) {
       if (orgUnitPaths) {
         const path = orgUnitPaths.get(e.orgUnitId) ?? '';

@@ -2,6 +2,7 @@ import { useDataEngine } from '@dhis2/app-runtime';
 import { useQuery } from '@tanstack/react-query';
 import { fetchGrid3ByEnvelope, geometryToEnvelope, type Grid3Settlement } from '../lib/grid3';
 import { readIndex, loadMicroplan } from '../lib/microplanStore';
+import { weekSettlementsFromTeamPlans } from '../lib/teamSettlements';
 import { fetchEventPoints, fetchProgramCoordinatePoints } from '../lib/dhis2Data';
 import { usePrograms } from './usePrograms';
 import type { CoordinateAnalyticsResult } from '../lib/analyticsEnrollments';
@@ -62,6 +63,9 @@ export function useSelectedOrgUnitLayers(
     userFilter?: string | null;
     analyticsPeriod?: string | null;
     uploadedById?: string | null;
+    // when set, restrict the by-week settlement extraction to this team code
+    // (a team's code IS its username). null/undefined → all teams in the plans.
+    teamCode?: string | null;
   }
 ) {
   const engine = useDataEngine();
@@ -85,6 +89,7 @@ export function useSelectedOrgUnitLayers(
       opts?.userFilter ?? '',
       opts?.analyticsPeriod ?? '',
       opts?.uploadedById ?? '',
+      opts?.teamCode ?? '',
     ],
     enabled: !!orgUnitId,
     staleTime: TEN_MIN,
@@ -108,39 +113,45 @@ export function useSelectedOrgUnitLayers(
       }
 
       // ---- Step 2: uploaded settlements by week ----------------------------
-      // find microplans uploaded against this org unit, load them, and group
-      // their settlements by the weeks in which each is visited.
-      const weekMap = new Map<number, Map<string, Settlement>>();
+      // Find microplans uploaded against this org unit, load them, extract the
+      // settlement NAMES from each team's visit keys (handling the unresolved
+      // `name:<settlement>` keys the real data uses — see teamSettlements.ts),
+      // and group them by outreach week. When a team code is supplied the
+      // extraction is restricted to that team. Names are deduped per week and
+      // fed downstream to the geoservice, which resolves them to boundaries.
+      let weekSettlements: WeekSettlements[] = [];
       try {
         const index = await readIndex(engine as any);
         // filter uploads to this org unit, and (when a user is selected) to
         // microplans uploaded by that user — "for a selected user".
         const forOu = index.filter(
           (e) =>
-            e.orgUnitId === id &&
+           // e.orgUnitId === id &&
             (!opts?.uploadedById || e.uploadedById === opts.uploadedById)
         );
+        const weekMap = new Map<number, Map<string, Settlement>>();
         for (const entry of forOu) {
           const plan = await loadMicroplan(engine as any, entry.id);
           if (!plan) continue;
           const settlementById = new Map((plan.settlements ?? []).map((s) => [s.id, s]));
-          for (const teamPlan of plan.teamPlans) {
-            for (const [settlementId, weeks] of Object.entries(teamPlan.visits)) {
-              const s = settlementById.get(settlementId);
-              if (!s) continue;
-              for (const w of weeks) {
-                if (!weekMap.has(w)) weekMap.set(w, new Map());
-                weekMap.get(w)!.set(s.id, s);
-              }
-            }
+          // Name-aware, team-filtered week grouping. Returns lightweight
+          // name-only Settlement stubs (geometry filled in by the geoservice).
+          const perPlan = weekSettlementsFromTeamPlans(plan.teamPlans, {
+            teamCode: opts?.teamCode ?? null,
+            settlementById,
+          });
+          for (const ws of perPlan) {
+            if (!weekMap.has(ws.week)) weekMap.set(ws.week, new Map());
+            const bucket = weekMap.get(ws.week)!;
+            for (const s of ws.settlements) bucket.set(s.name.toLowerCase(), s);
           }
         }
+        weekSettlements = [...weekMap.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([week, m]) => ({ week, settlements: [...m.values()] }));
       } catch (e) {
         console.warn('uploaded settlement lookup failed', e);
       }
-      const weekSettlements: WeekSettlements[] = [...weekMap.entries()]
-        .sort((a, b) => a[0] - b[0])
-        .map(([week, m]) => ({ week, settlements: [...m.values()] }));
 
       // ---- Step 3 + 4: coordinate-analytics (per-dimension points + meta) ---
       let eventPoints: TrackerPoint[] = [];
@@ -164,12 +175,13 @@ export function useSelectedOrgUnitLayers(
             coordinateMetaItems = res.metaDataItems;
             coordinateDimensionIds = res.nonEmptyDimensionIds;
             eventPoints = Object.values(res.pointsByDimension).flat();
-          } else {
+          } 
+          else {
             // no COORDINATE dimensions on this program → legacy point fetch
             eventPoints = await fetchEventPoints(engine as any, {
               program: opts.program,
               orgUnit: id,
-              period: 'LAST_12_MONTHS',
+              period: 'LAST_3_MONTHS',
             });
           }
         } catch (e) {

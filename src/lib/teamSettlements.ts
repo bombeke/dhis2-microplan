@@ -3,30 +3,36 @@ import type { WeekSettlements } from '../hooks/useSelectedOrgUnitLayers';
 import type { Settlement } from '../types';
 
 /**
- * Extract settlement names from a team's `visits` map.
+ * Extract the settlement name from a team's `visits` map key.
  *
- * A visit KEY may be a resolved settlement id, or an unresolved `name:<text>`
- * key. Per the uploaded data, the `name:` text can hold SEVERAL settlement
- * names as space-separated words, e.g.
- *   "name:layin amadi dakuma layi sautal": [4]
- *     → settlements: layin, amadi, dakuma, layi, sautal (week 4)
- *   "name:kurna layin saudat dakuma layin mangor": [1]
- *     → settlements: kurna, layin, saudat, dakuma, layin, mangor (week 1)
- * So for `name:` keys we split the remaining text into individual words, each a
- * settlement name; for resolved ids we fall back to the Settlement's name.
+ * A visit KEY is either a resolved settlement id, or an unresolved
+ * `name:<settlement name>` key produced at ingest time (see ingest.ts:
+ * `name:${norm(name)}`). Per the issue, the encoded form is
+ *   name:ward1 ward2:[weekNo]
+ * i.e. the whole text after `name:` is a SINGLE settlement name (it may contain
+ * spaces — it came from one spreadsheet cell), optionally followed by a
+ * `:weekNo` suffix. So we take the full remaining text as one name and strip a
+ * trailing `:<digits>` week marker if present. We do NOT split on spaces, which
+ * would wrongly fragment multi-word names like "layin amadi dakuma" into
+ * unrelated tokens the geoservice can't match.
+ *
+ * Returns an array (0 or 1 name) to keep the caller's flat-map ergonomic.
  */
 
 const NAME_PREFIX = 'name:';
 
-/** Split a single visit key into the settlement name(s) it encodes. */
+/** Extract the settlement name encoded by a single visit key. */
 export function settlementNamesFromVisitKey(
   key: string,
   settlementById?: Map<string, Settlement>
 ): string[] {
   if (key.startsWith(NAME_PREFIX)) {
-    const text = key.slice(NAME_PREFIX.length).trim();
-    // space-separated words = individual settlement names
-    return text.split(/\s+/).map((w) => w.trim()).filter(Boolean);
+    let text = key.slice(NAME_PREFIX.length).trim();
+    // strip a trailing week marker: "...:[4]", "...:4", "...:[1,2]"
+    text = text.replace(/:\s*\[?\d+(?:\s*,\s*\d+)*\]?\s*$/, '').trim();
+    // strip a dangling trailing colon left by malformed keys ("name:layin:")
+    text = text.replace(/:\s*$/, '').trim();
+    return text ? [text] : [];
   }
   // resolved id → use the settlement's display name if we have it
   const s = settlementById?.get(key);

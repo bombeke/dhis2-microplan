@@ -46,6 +46,7 @@ export async function fetchSettlementsByName(
   const url = opts?.url ?? DEFAULT_URL;
   const bufferMeters = opts?.bufferMeters ?? 150;
   const chunkSize = opts?.chunkSize ?? 100;
+  console.log("names:",names)
 
   const cleaned = Array.from(
     new Set(names.map((n) => n.trim()).filter((n) => n.length > 0))

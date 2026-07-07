@@ -14,6 +14,7 @@ const OVERLAY_LABELS: Record<keyof OverlayToggles, string> = {
   points: 'Tracker / event points',
   flagged: 'Out-of-bounds points',
   boundaries: 'Org-unit boundaries',
+  settlementBoundaries: 'Settlement boundaries',
 };
 
 export const LayerControl: React.FC = () => {

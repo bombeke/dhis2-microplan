@@ -50,6 +50,53 @@ export interface StoredMicroplan extends MicroplanIndexEntry {
 const isMissing = (e: any) =>
   e?.details?.httpStatusCode === 404 || /not found|404/i.test(e?.message ?? '');
 
+/**
+ * A team label is shown to the user as `Name (username)` — e.g. `XXDGHH (usernameA)`.
+ * The bracketed token is the username, which is also the DHIS2 teamCode used in
+ * teamPlans. Pull it out (falling back to the whole trimmed string when there
+ * are no brackets, so a bare username still resolves).
+ */
+export function usernameFromTeamLabel(label: string): string {
+  const m = label.match(/\(([^)]+)\)\s*$/);
+  return (m ? m[1] : label).trim();
+}
+
+/** A single catalogue hit: which dataStore key to open, and who uploaded it. */
+export interface MicroplanLookup {
+  id: string; // dataStore key → dataStore/microplan/plan:<id>
+  uploadedById: string;
+  uploadedBy: string;
+  entry: MicroplanIndexEntry;
+}
+
+/**
+ * Step 1 of the issue: extract the username from a selected team (e.g.
+ * `XXDGHH (usernameA)` → `usernameA`), search `dataStore/microplan/index`, and
+ * return the matching `id` + `uploadedById`. `id` is the key to fetch the full
+ * plan under `dataStore/microplan/plan:<id>`.
+ *
+ * Matching is case-insensitive and checks both the recorded uploader username
+ * (`uploadedBy`) and any teamPlan whose `teamCode` equals the username — since
+ * a team's code IS its username. Returns every catalogue row for that team
+ * (a user may have uploaded several plans).
+ */
+export async function findMicroplansByTeam(
+  engine: Engine,
+  team: string
+): Promise<MicroplanLookup[]> {
+  const username = usernameFromTeamLabel(team).toLowerCase();
+  if (!username) return [];
+  const index = await readIndex(engine);
+  return index
+    .filter((e) => (e.uploadedById ?? '').toLowerCase() === username)
+    .map((entry) => ({
+      id: entry.id,
+      uploadedById: entry.uploadedById,
+      uploadedBy: entry.uploadedBy,
+      entry,
+    }));
+}
+
 /** Read the catalogue. Returns [] when the namespace/key doesn't exist yet. */
 export async function readIndex(engine: Engine): Promise<MicroplanIndexEntry[]> {
   try {
