@@ -54,7 +54,7 @@ export function weekSettlementsFromTeamPlans(
     : teamPlans;
 
   // week -> set of settlement names (dedup, case-insensitive)
-  const weekMap = new Map<number, Map<string, string>>();
+  const weekMap = new Map<number,Map<string, { name: string; ward: string; state: string }>>();
 
   for (const plan of plans) {
     for (const [key, weeks] of Object.entries(plan.visits)) {
@@ -62,21 +62,25 @@ export function weekSettlementsFromTeamPlans(
       for (const week of weeks) {
         if (!weekMap.has(week)) weekMap.set(week, new Map());
         const bucket = weekMap.get(week)!;
-        for (const name of names) bucket.set(name.toLowerCase(), name);
+        for (const name of names) bucket.set(name.toLowerCase(), {
+          name,
+          ward: plan.ward ?? '',
+          state: plan.state ?? '',
+        });
       }
     }
   }
 
   return [...weekMap.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([week, names]) => ({
+    .map(([week, bucket]) => ({
       week,
-      settlements: [...names.values()].map(
-        (name): Settlement => ({
+      settlements: [...bucket.values()].map(
+        ({name, ward, state}): Settlement => ({
           id: `team:${week}:${name.toLowerCase()}`,
           name,
-          ward: '',
-          state: '',
+          ward,
+          state,
           source: 'upload' as any,
           geometry: { type: 'Polygon', coordinates: [] },
           centroid: [0, 0],

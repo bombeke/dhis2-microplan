@@ -18,10 +18,15 @@ export interface WeekGeojson {
  * Cached 10 min per (week → names) signature; only runs when there are names.
  */
 export function useSettlementGeoservice(weekSettlements: WeekSettlements[] | undefined) {
-  // stable signature of the requested names so the cache key changes only when
-  // the actual settlement set changes.
+  // stable signature keyed on name + ward + state, since all three now scope the query
   const signature = (weekSettlements ?? [])
-    .map((w) => `${w.week}:${w.settlements.map((s) => s.name).sort().join('|')}`)
+    .map(
+      (w) =>
+        `${w.week}:${w.settlements
+          .map((s) => `${s.name}~${s.ward}~${s.state}`)
+          .sort()
+          .join('|')}`
+    )
     .join(';');
 
   return useQuery<WeekGeojson[]>({
@@ -32,14 +37,26 @@ export function useSettlementGeoservice(weekSettlements: WeekSettlements[] | und
     queryFn: async () => {
       const results: WeekGeojson[] = [];
       for (const w of weekSettlements ?? []) {
-        const names = w.settlements.map((s) => s.name);
-        if (names.length === 0) continue;
-        const geojson = await fetchSettlementsByName(names);
-        // stamp week on each feature so the map can colour by week
-        for (const f of geojson.features) {
-          f.properties = { ...(f.properties ?? {}), week: w.week };
+        if (w.settlements.length === 0) continue;
+
+        // group by ward/state so each request is scoped to one admin area
+        const groups = new Map<string, { ward: string; state: string; names: string[] }>();
+        for (const s of w.settlements) {
+          const k = `${s.state.toLowerCase()}|${s.ward.toLowerCase()}`;
+          if (!groups.has(k)) groups.set(k, { ward: s.ward, state: s.state, names: [] });
+          groups.get(k)!.names.push(s.name);
         }
-        results.push({ week: w.week, geojson });
+
+        const features: GeoJSON.Feature[] = [];
+        for (const { ward, state, names } of groups.values()) {
+          const geojson = await fetchSettlementsByName(names, { ward, state });
+          for (const f of geojson.features) {
+            f.properties = { ...(f.properties ?? {}), week: w.week, ward, state };
+          }
+          features.push(...geojson.features);
+        }
+
+        results.push({ week: w.week, geojson: { type: 'FeatureCollection', features } });
       }
       return results;
     },

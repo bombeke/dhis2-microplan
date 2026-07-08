@@ -41,12 +41,18 @@ function sqlQuote(v: string): string {
  */
 export async function fetchSettlementsByName(
   names: string[],
-  opts?: { url?: string; bufferMeters?: number; signal?: AbortSignal; chunkSize?: number }
+  opts?: {
+    ward?: string;
+    state?: string;
+    url?: string;
+    bufferMeters?: number;
+    signal?: AbortSignal;
+    chunkSize?: number;
+  }
 ): Promise<GeoJSON.FeatureCollection> {
   const url = opts?.url ?? DEFAULT_URL;
   const bufferMeters = opts?.bufferMeters ?? 150;
   const chunkSize = opts?.chunkSize ?? 100;
-  console.log("names:",names)
 
   const cleaned = Array.from(
     new Set(names.map((n) => n.trim()).filter((n) => n.length > 0))
@@ -54,11 +60,16 @@ export async function fetchSettlementsByName(
   const out: GeoJSON.Feature[] = [];
   if (cleaned.length === 0) return { type: 'FeatureCollection', features: out };
 
+  const scope: string[] = [];
+  const ward = opts?.ward?.trim();
+  const state = opts?.state?.trim();
+  if (ward) scope.push(`UPPER(wardname) = ${sqlQuote(ward.toUpperCase())}`);
+  if (state) scope.push(`UPPER(statename) = ${sqlQuote(state.toUpperCase())}`);
+
   for (let i = 0; i < cleaned.length; i += chunkSize) {
     const chunk = cleaned.slice(i, i + chunkSize);
-    // UPPER(set_name) IN ('A','B',...) for case-insensitive matching
     const inList = chunk.map((n) => sqlQuote(n.toUpperCase())).join(',');
-    const where = `UPPER(${NAME_FIELD}) IN (${inList})`;
+    const where = [`UPPER(${NAME_FIELD}) IN (${inList})`, ...scope].join(' AND ');
 
     const params = new URLSearchParams({
       f: 'geojson',
@@ -74,7 +85,6 @@ export async function fetchSettlementsByName(
 
     for (const f of fc.features ?? []) {
       if (!f.geometry) continue;
-      // Point → small polygon buffer so it can be drawn as a fill layer.
       if (f.geometry.type === 'Point') {
         try {
           const buffered = buffer(f as any, bufferMeters, { units: 'meters' });

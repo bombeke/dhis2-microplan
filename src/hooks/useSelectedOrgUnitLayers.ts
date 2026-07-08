@@ -30,7 +30,7 @@ export interface WeekSettlements {
 export interface SelectedOrgUnitLayers {
   orgUnitId: string;
   orgUnitName: string;
-  geometry: GeoJSON.Geometry | null;
+  geometry: GeoJSON.Geometry | GeoJSON.FeatureCollection | null;
   grid3: Grid3Settlement[];
   grid3Truncated: boolean;
   weekSettlements: WeekSettlements[];
@@ -44,7 +44,7 @@ export interface SelectedOrgUnitLayers {
 async function fetchOrgUnitGeometry(
   engine: ReturnType<typeof useDataEngine>,
   orgUnitId: string
-): Promise<{ name: string; geometry: GeoJSON.Geometry | null }> {
+): Promise<{ name: string; geometry: GeoJSON.Geometry | GeoJSON.FeatureCollection | any | null }> {
   const data: any = await engine.query({
     ou: {
       resource: `organisationUnits/${orgUnitId}`,

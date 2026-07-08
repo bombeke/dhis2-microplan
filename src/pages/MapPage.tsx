@@ -202,7 +202,6 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
         : [],
     [allTeamPlans, selectedTeamCode]
   );
-  console.log("Assigned settlements:",teamWeekSettlements)
 
   // fetch geoservice geojson for the team-derived settlement names, then merge
   const { data: teamWeekGeojson } = useSettlementGeoservice(teamWeekSettlements);
@@ -226,6 +225,7 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
           selected={visibleSelected}
           settlementGeojson={settlementGeojson}
           teamSettlementGeojson={teamSettlementGeojson}
+          orgUnitGeojson={selectedLayers?.geometry ?? null}
         />
         <div className="map-controls">
           <LayerControl />

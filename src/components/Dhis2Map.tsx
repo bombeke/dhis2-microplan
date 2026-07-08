@@ -45,6 +45,7 @@ const SRC = {
   events: 'sel-events',
   geoservice: 'sel-geoservice',
   teamGeoservice: 'sel-team-geoservice',
+  orgUnit: 'sel-orgunit-boundary',
 } as const;
 
 const LYR = {
@@ -66,6 +67,8 @@ const LYR = {
   geoserviceLine: 'sel-geoservice-line',
   teamGeoserviceFill: 'sel-team-geoservice-fill',
   teamGeoserviceLine: 'sel-team-geoservice-line',
+  orgUnitFill: 'sel-orgunit-fill',
+  orgUnitLine: 'sel-orgunit-line',
 } as const;
 
 // Per-week highlight colours (weeks 1..5) for the uploaded-settlement overlay.
@@ -157,7 +160,8 @@ export const Dhis2Map: React.FC<{
   selected?: SelectedOrgUnitLayers | null;
   settlementGeojson?: GeoJSON.FeatureCollection | null;
   teamSettlementGeojson?: GeoJSON.FeatureCollection | null;
-}> = ({ microplans, basemap, overlays, loading, selected, settlementGeojson, teamSettlementGeojson }) => {
+  orgUnitGeojson?: GeoJSON.FeatureCollection | GeoJSON.Geometry | null;
+}> = ({ microplans, basemap, overlays, loading, selected, settlementGeojson, teamSettlementGeojson, orgUnitGeojson }) => {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -171,7 +175,7 @@ export const Dhis2Map: React.FC<{
       boundaries: false,
       settlementBoundaries: true,
     };
-
+  console.log("geometry:",orgUnitGeojson)
   /** Run a fn once the style is loaded; queue it on 'load' otherwise. */
   const whenReady = useCallback((map: maplibregl.Map, fn: () => void) => {
     if (map.isStyleLoaded()) fn();
@@ -241,6 +245,10 @@ export const Dhis2Map: React.FC<{
     map.setStyle(basemapStyle(basemap));
     const reAdd = () => {
       mountOverlays();
+      mountSelected();
+      mountGeoservice();
+      mountTeamGeoservice();
+      mountOrgUnitBoundary();
       map.off('styledata', reAdd);
     };
     map.on('styledata', reAdd);
@@ -745,6 +753,67 @@ export const Dhis2Map: React.FC<{
     if (!map) return;
     whenReady(map, mountTeamGeoservice);
   }, [mountTeamGeoservice, whenReady]);
+
+  const mountOrgUnitBoundary = useCallback(() => {
+  const map = mapRef.current;
+  if (!map) return;
+  const fc: GeoJSON.FeatureCollection =
+    orgUnitGeojson ? { 
+      type: 'FeatureCollection', 
+      features: [{
+        "type": "Feature",
+        geometry: orgUnitGeojson
+     }]
+    }: { type: 'FeatureCollection', features: []};
+  upsertGeoJson(map, SRC.orgUnit, fc.features);
+
+  if (!map.getLayer(LYR.orgUnitLine)) {
+    // insert the fill BELOW existing settlement fills so it acts as a
+    // backdrop, not a mask — beforeId is the first settlement layer if mounted
+    const beforeId = map.getLayer(LYR.settlementFill) ? LYR.settlementFill : undefined;
+    map.addLayer(
+      {
+        id: LYR.orgUnitFill,
+        type: 'fill',
+        source: SRC.orgUnit,
+        paint: { 'fill-color': '#264b88', 'fill-opacity': 0.04 },
+      },
+      beforeId
+    );
+    map.addLayer({
+      id: LYR.orgUnitLine,
+      type: 'line',
+      source: SRC.orgUnit,
+      paint: {
+        'line-color': '#264b88',
+        'line-width': 2
+      },
+    });
+    map.on('click', LYR.orgUnitFill, (e) => {
+      const p = e.features?.[0]?.properties as any;
+      if (!p) return;
+      openPopup(
+        map,
+        `<div class="map-popup__title">${escapeHtml(String(p.name ?? 'Org unit'))}</div>` +
+          (p.level != null ? rowHtml('Level', String(p.level)) : '') +
+          (p.code ? rowHtml('Code', String(p.code)) : ''),
+        [e.lngLat.lng, e.lngLat.lat]
+      );
+    });
+  }
+
+  // reuse the boundaries toggle (or add a dedicated one to OverlayToggles)
+  for (const l of [LYR.orgUnitFill, LYR.orgUnitLine]) {
+    setLayerVisible(map, l, ov.boundaries);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [orgUnitGeojson, openPopup, ov.boundaries]);
+
+useEffect(() => {
+  const map = mapRef.current;
+  if (!map) return;
+  whenReady(map, mountOrgUnitBoundary);
+}, [mountOrgUnitBoundary, whenReady]);
 
   return (
     <div className="mapview-wrap" style={{ position: 'relative', height: '70vh', width: '100%' }}>
