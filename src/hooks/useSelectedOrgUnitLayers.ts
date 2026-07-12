@@ -5,8 +5,9 @@ import { readIndex, loadMicroplan } from '../lib/microplanStore';
 import { weekSettlementsFromTeamPlans } from '../lib/teamSettlements';
 import { fetchEventPoints, fetchProgramCoordinatePoints } from '../lib/dhis2Data';
 import { usePrograms } from './usePrograms';
-import type { CoordinateAnalyticsResult } from '../lib/analyticsEnrollments';
+import type { AnalyticsTable, CoordinateAnalyticsResult } from '../lib/analyticsEnrollments';
 import type { Settlement, TrackerPoint } from '../types';
+import { fetchSettlementsByState } from '@/lib/settlementsGeoservice';
 
 /**
  * Assembles the three overlays requested for a SELECTED org unit:
@@ -39,9 +40,10 @@ export interface SelectedOrgUnitLayers {
   coordinatePointsByDim: Record<string, TrackerPoint[]>;
   coordinateMetaItems: Record<string, { name?: string; [k: string]: unknown }>;
   coordinateDimensionIds: string[];
+  tableResult: AnalyticsTable;
 }
 
-async function fetchOrgUnitGeometry(
+export async function fetchOrgUnitGeometry(
   engine: ReturnType<typeof useDataEngine>,
   orgUnitId: string
 ): Promise<{ name: string; geometry: GeoJSON.Geometry | GeoJSON.FeatureCollection | any | null }> {
@@ -91,22 +93,27 @@ export function useSelectedOrgUnitLayers(
       opts?.uploadedById ?? '',
       opts?.teamCode ?? '',
     ],
-    enabled: !!orgUnitId,
+    enabled: !!orgUnitId && !!opts?.program && !!opts?.uploadedById && !!opts?.analyticsPeriod,
     staleTime: TEN_MIN,
     gcTime: TEN_MIN * 2,
     queryFn: async () => {
+
       const id = orgUnitId as string;
       const { name, geometry } = await fetchOrgUnitGeometry(engine, id);
 
       // ---- Step 1: GRID3 settlements by spatial envelope -------------------
-      let grid3: Grid3Settlement[] = [];
+      let grid3: Grid3Settlement[] | any = [];
       let grid3Truncated = false;
       if (geometry) {
         try {
-          const envelope = geometryToEnvelope(geometry);
-          const res = await fetchGrid3ByEnvelope(envelope, { url: opts?.grid3Url });
-          grid3 = res.settlements;
-          grid3Truncated = res.exceededTransferLimit;
+          //const envelope = geometryToEnvelope(geometry);
+          //const res = await fetchGrid3ByEnvelope(envelope, { url: opts?.grid3Url });
+          //grid3 = res.settlements;
+          //grid3Truncated = res.exceededTransferLimit;
+          const cleanName = name?.replace(/\s*State$/i, '')?.replace(/\s+/g, '');
+          const { features } = await fetchSettlementsByState(cleanName);
+          grid3 = features;
+          
         } catch (e) {
           console.warn('GRID3 fetch failed', e);
         }
@@ -119,8 +126,9 @@ export function useSelectedOrgUnitLayers(
       // and group them by outreach week. When a team code is supplied the
       // extraction is restricted to that team. Names are deduped per week and
       // fed downstream to the geoservice, which resolves them to boundaries.
+      // Depreceated
       let weekSettlements: WeekSettlements[] = [];
-      try {
+      /*try {
         const index = await readIndex(engine as any);
         // filter uploads to this org unit, and (when a user is selected) to
         // microplans uploaded by that user — "for a selected user".
@@ -152,13 +160,15 @@ export function useSelectedOrgUnitLayers(
       } catch (e) {
         console.warn('uploaded settlement lookup failed', e);
       }
-
+      */
       // ---- Step 3 + 4: coordinate-analytics (per-dimension points + meta) ---
       let eventPoints: TrackerPoint[] = [];
       let coordinatePointsByDim: Record<string, TrackerPoint[]> = {};
       let coordinateMetaItems: CoordinateAnalyticsResult['metaDataItems'] = {};
       let coordinateDimensionIds: string[] = [];
-      if (opts?.program) {
+      let tableResult: AnalyticsTable =  { columns:[], rows: [], total: 0 };
+
+      if (opts?.program && id && opts?.uploadedById && opts?.analyticsPeriod) {
         try {
           const res = await fetchProgramCoordinatePoints(engine as any, {
             program: opts.program,
@@ -175,13 +185,14 @@ export function useSelectedOrgUnitLayers(
             coordinateMetaItems = res.metaDataItems;
             coordinateDimensionIds = res.nonEmptyDimensionIds;
             eventPoints = Object.values(res.pointsByDimension).flat();
+            tableResult = res.table;
           } 
           else {
             // no COORDINATE dimensions on this program → legacy point fetch
             eventPoints = await fetchEventPoints(engine as any, {
               program: opts.program,
               orgUnit: id,
-              period: 'LAST_3_MONTHS',
+              period: opts.analyticsPeriod || 'THIS_MONTH',
             });
           }
         } catch (e) {
@@ -200,6 +211,7 @@ export function useSelectedOrgUnitLayers(
         coordinatePointsByDim,
         coordinateMetaItems,
         coordinateDimensionIds,
+        tableResult
       };
     },
   });

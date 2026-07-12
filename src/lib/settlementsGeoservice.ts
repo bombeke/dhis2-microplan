@@ -29,7 +29,7 @@ export interface SettlementNameFeatureProps {
 }
 
 /** Escape a value for an ArcGIS SQL where clause (single quotes doubled). */
-function sqlQuote(v: string): string {
+export function sqlQuote(v: string): string {
   return `'${v.replace(/'/g, "''")}'`;
 }
 
@@ -51,7 +51,7 @@ export async function fetchSettlementsByName(
   }
 ): Promise<GeoJSON.FeatureCollection> {
   const url = opts?.url ?? DEFAULT_URL;
-  const bufferMeters = opts?.bufferMeters ?? 150;
+  const bufferMeters = opts?.bufferMeters ?? 500;
   const chunkSize = opts?.chunkSize ?? 100;
 
   const cleaned = Array.from(
@@ -99,6 +99,93 @@ export async function fetchSettlementsByName(
         out.push(f);
       }
     }
+  }
+
+  return { type: 'FeatureCollection', features: out };
+}
+
+
+
+/**
+ * Access to the "Settlements_in_Nigeria" GRID3 settlement-NAMES FeatureServer.
+ *
+ * POINT geometry with named attributes — `set_name`, wardname, lganame,
+ * statename. This variant fetches ALL settlements in a given state by
+ * `statename`, paging through the service, and returns a polygon
+ * FeatureCollection (points buffered to small polygons for a fill layer).
+ */
+
+/**
+ * Query the settlements service for all settlements in the given state and
+ * return a polygon FeatureCollection (points buffered to small polygons for a
+ * fill layer). The state name is matched case-insensitively on `statename`.
+ * Pages through results via resultOffset until the server stops returning
+ * `exceededTransferLimit`.
+ */
+export async function fetchSettlementsByState(
+  state: string,
+  opts?: {
+    url?: string;
+    bufferMeters?: number;
+    signal?: AbortSignal;
+    pageSize?: number;
+  }
+): Promise<GeoJSON.FeatureCollection> {
+  const url = opts?.url ?? DEFAULT_URL;
+  const bufferMeters = opts?.bufferMeters ?? 150;
+  const pageSize = opts?.pageSize ?? 2000;
+
+  const out: GeoJSON.Feature[] = [];
+  const stateName = state.trim();
+  if (!stateName) return { type: 'FeatureCollection', features: out };
+
+  const where = `UPPER(statename) = ${sqlQuote(stateName.toUpperCase())}`;
+
+  let offset = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const params = new URLSearchParams({
+      f: 'geojson',
+      where,
+      outFields: `${NAME_FIELD},wardname,lganame,statename,set_id`,
+      returnGeometry: 'true',
+      outSR: '4326',
+      resultOffset: String(offset),
+      resultRecordCount: String(pageSize),
+    });
+
+    const res = await fetch(`${url}/query?${params.toString()}`, { signal: opts?.signal });
+    if (!res.ok) throw new Error(`Settlements query failed: ${res.status}`);
+    const fc = (await res.json()) as GeoJSON.FeatureCollection & {
+      exceededTransferLimit?: boolean;
+      properties?: { exceededTransferLimit?: boolean };
+    };
+
+    const features = fc.features ?? [];
+    for (const f of features) {
+      if (!f.geometry) continue;
+      if (f.geometry.type === 'Point') {
+        try {
+          const buffered = buffer(f as any, bufferMeters, { units: 'meters' });
+          if (buffered) {
+            buffered.properties = { ...(f.properties ?? {}) };
+            out.push(buffered as GeoJSON.Feature);
+          }
+        } catch {
+          /* skip un-bufferable */
+        }
+      } else {
+        out.push(f);
+      }
+    }
+
+    const more =
+      fc.exceededTransferLimit ??
+      fc.properties?.exceededTransferLimit ??
+      features.length === pageSize;
+
+    if (!more || features.length === 0) break;
+    offset += features.length;
   }
 
   return { type: 'FeatureCollection', features: out };

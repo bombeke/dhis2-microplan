@@ -60,20 +60,6 @@ export const MapFilterBar: React.FC<{
     <div className="filterbar">
       <span className="filterbar__label">Filter map</span>
 
-      <SearchableSelect
-        options={userOptions}
-        value={mapFilters.uploadedById}
-        allLabel={usersLoading ? 'Loading teams…' : 'Teams'}
-        placeholder="Search name or username…"
-        bracketSublabel
-        onChange={(id) => setMapFilter('uploadedById', id)}
-      />
-
-      <OrgUnitLazyTreeSelect
-        value={mapFilters.orgUnitId}
-        onChange={(id) => setMapFilter('orgUnitId', id)}
-      />
-
       <ProgramSelect
         value={mapFilters.programId}
         onChange={(id) => {
@@ -81,8 +67,24 @@ export const MapFilterBar: React.FC<{
           setSelectedDimensions([]); // reset dimension picks for the new program
         }}
       />
+      
+      <OrgUnitLazyTreeSelect
+        value={mapFilters.orgUnitId}
+        onChange={(id) => setMapFilter('orgUnitId', id)}
+      />
 
-      {mapFilters.programId && (
+      { mapFilters.programId && mapFilters.orgUnitId && (
+        <SearchableSelect
+          options={userOptions}
+          value={mapFilters.uploadedById}
+          allLabel={usersLoading ? 'Loading teams…' : 'Teams'}
+          placeholder="Search name or username…"
+          bracketSublabel
+          onChange={(id) => setMapFilter('uploadedById', id)}
+        />
+      )}
+
+      { mapFilters.programId && mapFilters.orgUnitId && (
         <GroupedMultiSelect
           groups={dimensionGroups}
           selected={selectedDimensions}
@@ -90,11 +92,14 @@ export const MapFilterBar: React.FC<{
           loading={dimsLoading}
         />
       )}
+       
+      { mapFilters.programId && mapFilters.orgUnitId && (
       <PeriodSelect
         value={mapFilters.period}
         onChange={(id) => setMapFilter('period', id)}
       />
-
+      )}
+      {/*
       <SearchableSelect
         options={levelOptions}
         value={mapFilters.level != null ? String(mapFilters.level) : null}
@@ -103,7 +108,7 @@ export const MapFilterBar: React.FC<{
         bracketSublabel
         onChange={(id) => setMapFilter('level', id ? Number(id) : null)}
       />
-
+      */}
       {active && (
         <button className="filterbar__reset" onClick={resetMapFilters}>Clear</button>
       )}
@@ -125,19 +130,37 @@ export function filterIndex(
   orgUnitPaths?: Map<string, string>
 ): MicroplanIndexEntry[] {
   return index.filter((e) => {
-    if (f.uploadedById && e.uploadedById !== f.uploadedById) return false;
+    //if (f.uploadedById && e.uploadedById !== f.uploadedById) return false;
     if (f.programId && e.programId !== f.programId) return false;
-    if (f.period && e.period !== f.period) return false;
+    //if (f.period && e.period !== f.period) return false;
     //if (f.level != null && e.level !== f.level) return false;
     if (f.orgUnitId) {
       if (orgUnitPaths) {
         const path = orgUnitPaths.get(e.orgUnitId) ?? '';
         // match if the microplan's org unit is, or is under, the selected unit
         if (e.orgUnitId !== f.orgUnitId && !path.includes(`/${f.orgUnitId}`)) return false;
-      } else if (e.orgUnitId !== f.orgUnitId) {
+      } 
+      else if (e.orgUnitId !== f.orgUnitId) {
         return false;
       }
     }
     return true;
   });
 }
+
+export const getLatestMicroPlan = (data: MicroplanIndexEntry[], f: ReturnType<typeof useStore.getState>['mapFilters'] ): MicroplanIndexEntry[] => {
+  
+  const latest = Object.values(
+    data.reduce((acc, cur) => {
+       if (!f.orgUnitId || !f.programId) return acc;
+      if(f.orgUnitId === cur.orgUnitId && f.programId === cur.programId){
+        const key = `${cur.orgUnitId}|${cur.programId}`;
+        if (!acc[key] || new Date(cur.uploadedAt) > new Date(acc[key].uploadedAt)) {
+          acc[key] = cur;
+        }
+      }
+      return acc;
+    }, {} as Record<string, MicroplanIndexEntry>)
+  ).filter(Boolean).filter(String);
+  return latest;
+};

@@ -16,11 +16,16 @@ const DEFAULT_GRID3_URL =
   'https://services3.arcgis.com/BU6Aadhn6tbBEdyk/arcgis/rest/services/GRID3_NGA_settlement_extents_v4_0/FeatureServer/0';
 
 export interface Grid3Settlement {
-  id: string; // block_id
-  extentType: string; // "Built-up Area" | "Small Settlement Area"
-  areaSqm: number | null;
-  compositeClass: string | null;
+  id?: string | number | undefined; // block_id
+  extentType?: string; // "Built-up Area" | "Small Settlement Area"
+  areaSqm?: number | null;
+  compositeClass?: string | null;
   geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
+  set_name?: string;
+  wardname?: string;
+  lganame?: string;
+  statename?: string;
+  set_id?: string;
 }
 
 export interface Grid3FetchResult {

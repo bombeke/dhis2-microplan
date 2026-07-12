@@ -26,7 +26,28 @@ export interface CoordinateAnalyticsResult {
   metaDataItems: Record<string, { name?: string; [k: string]: unknown }>;
   /** the dimensions that actually yielded ≥1 point */
   nonEmptyDimensionIds: string[];
+  table: AnalyticsTable;
 }
+export interface CoordinateAnalyticsResultD {
+  pointsByDimension: Record<string, TrackerPoint[]>;
+  metaDataItems: Record<string, { name?: string; [k: string]: unknown }>;
+  nonEmptyDimensionIds: string[];
+  
+}
+
+export interface AnalyticsTableColumn {
+  name: string; // dimension/column id, e.g. "jJ82mWtkUW5" or "pi"
+  label: string; // human label (from metaData.items or column header)
+}
+
+
+export interface AnalyticsTable {
+  columns: AnalyticsTableColumn[];
+  rows: string[][];
+  total: number;
+}
+
+
 
 /** Parse a DHIS2 analytics COORDINATE cell into [lng,lat]. */
 export function parseCoordinateCell(value: unknown): Coord | null {
@@ -57,46 +78,58 @@ export function extractParenValue(value: unknown): string | null {
   return m ? m[1].trim().toLowerCase() : null;
 }
 
-export async function fetchEnrollmentCoordinateAnalytics(
+/**
+ * Single pass over the enrollments analytics endpoint that produces both the
+ * per-dimension coordinate points for the map and the raw table for display.
+ */
+export async function fetchEnrollmentAnalytics(
   engine: Engine,
   opts: {
     program: string;
     orgUnit: string;
     dimensions: CoordinateDimension[];
-    period?: string; // e.g. "THIS_MONTH,LAST_MONTH" or a fixed pe
+    period?: string;
+    userFilter?: string | null;
     pageSize?: number;
     maxPages?: number;
-    /** username (already lowercased/extracted) to filter rows by; when set,
-     *  keep only rows whose createdbydisplayname OR lastupdatedbydisplayname
-     *  paren-value matches. When undefined, no user filtering is applied. */
-    userFilter?: string | null;
   }
 ): Promise<CoordinateAnalyticsResult> {
   const dims = opts.dimensions;
   const pointsByDimension: Record<string, TrackerPoint[]> = {};
   for (const d of dims) pointsByDimension[d.dimensionId] = [];
+
   let metaDataItems: CoordinateAnalyticsResult['metaDataItems'] = {};
+  let columns: AnalyticsTableColumn[] = [];
+  const tableRows: string[][] = [];
 
   if (dims.length === 0) {
-    return { pointsByDimension, metaDataItems, nonEmptyDimensionIds: [] };
+    return {
+      pointsByDimension,
+      metaDataItems,
+      nonEmptyDimensionIds: [],
+      table: { columns, rows: tableRows, total: 0 },
+    };
   }
 
   const userFilter = opts.userFilter ? opts.userFilter.toLowerCase() : null;
 
-  const dimensionParam = [
-    ...dims.map((d) => d.dimensionId),
-    `ou:${opts.orgUnit}`,
-  ].join(',');
-  // Request the coordinate dimensions plus the created/last-updated-by display
-  // name columns (needed for the user filter in step 1).
-  const headers = [
+  const baseHeaders = [
+    'ouname',
     'createdbydisplayname',
     'lastupdatedbydisplayname',
-    ...dims.map((d) => d.dimensionId),
-  ].join(',');
+    'lastupdated',
+  ];
+  const dimHeaders = dims.map((d) => d.dimensionId);
+  const dimensionParam = [...dimHeaders, `ou:${opts.orgUnit}`].join(',');
+  const headers = [...baseHeaders, ...dimHeaders].join(',');
 
   const pageSize = opts.pageSize ?? 100;
   const maxPages = opts.maxPages ?? 20;
+
+  const colIndex: Record<string, number> = {};
+  let enrIdx = -1;
+  let createdByIdx = -1;
+  let lastUpdatedByIdx = -1;
 
   for (let page = 1; page <= maxPages; page++) {
     const data: any = await engine.query({
@@ -118,41 +151,42 @@ export async function fetchEnrollmentCoordinateAnalytics(
     });
 
     const resp = data.a;
-    if (page === 1) metaDataItems = resp?.metaData?.items ?? {};
-
     const respHeaders: any[] = resp?.headers ?? [];
     const rows: any[][] = resp?.rows ?? [];
+
+    if (page === 1) {
+      metaDataItems = resp?.metaData?.items ?? {};
+      columns = respHeaders.map((h) => ({
+        name: h.name,
+        label: (metaDataItems[h.name] as any)?.name ?? h.column ?? h.name,
+      }));
+      for (const d of dims) {
+        const idx = respHeaders.findIndex(
+          (h) => h.name === d.dimensionId || h.column === d.dimensionId
+        );
+        if (idx >= 0) colIndex[d.dimensionId] = idx;
+      }
+      enrIdx = respHeaders.findIndex((h) => h.name === 'pi' || h.name === 'enrollment');
+      createdByIdx = respHeaders.findIndex(
+        (h) => h.name === 'createdbydisplayname' || h.column === 'createdbydisplayname'
+      );
+      lastUpdatedByIdx = respHeaders.findIndex(
+        (h) =>
+          h.name === 'lastupdatedbydisplayname' || h.column === 'lastupdatedbydisplayname'
+      );
+    }
+
     if (rows.length === 0) break;
 
-    // map each coordinate dimension to its column index in this response
-    const colIndex: Record<string, number> = {};
-    for (const d of dims) {
-      const idx = respHeaders.findIndex(
-        (h) => h.name === d.dimensionId || h.column === d.dimensionId
-      );
-      if (idx >= 0) colIndex[d.dimensionId] = idx;
-    }
-    // enrollment id column, for stable point ids
-    const enrIdx = respHeaders.findIndex(
-      (h) => h.name === 'pi' || h.name === 'enrollment'
-    );
-    // created-by / last-updated-by display-name columns, for the user filter
-    const createdByIdx = respHeaders.findIndex(
-      (h) => h.name === 'createdbydisplayname' || h.column === 'createdbydisplayname'
-    );
-    const lastUpdatedByIdx = respHeaders.findIndex(
-      (h) => h.name === 'lastupdatedbydisplayname' || h.column === 'lastupdatedbydisplayname'
-    );
-
     rows.forEach((row, r) => {
-      // Step 1 — user filter: keep the row only when the selected username
-      // matches the paren-value of createdbydisplayname OR lastupdatedbydisplayname.
       if (userFilter) {
         const createdBy = createdByIdx >= 0 ? extractParenValue(row[createdByIdx]) : null;
         const lastUpdatedBy =
           lastUpdatedByIdx >= 0 ? extractParenValue(row[lastUpdatedByIdx]) : null;
         if (createdBy !== userFilter && lastUpdatedBy !== userFilter) return;
       }
+
+      tableRows.push(row.map((v) => (v == null ? '' : String(v))));
 
       const enrollmentId = enrIdx >= 0 ? String(row[enrIdx]) : `r${page}-${r}`;
       for (const d of dims) {
@@ -179,98 +213,10 @@ export async function fetchEnrollmentCoordinateAnalytics(
     .map((d) => d.dimensionId)
     .filter((id) => pointsByDimension[id].length > 0);
 
-  return { pointsByDimension, metaDataItems, nonEmptyDimensionIds };
-}
-
-export interface AnalyticsTableColumn {
-  name: string; // dimension/column id, e.g. "jJ82mWtkUW5" or "pi"
-  label: string; // human label (from metaData.items or column header)
-}
-
-export interface AnalyticsTable {
-  columns: AnalyticsTableColumn[];
-  rows: string[][];
-  total: number;
-}
-
-/**
- * Retrieve the raw enrollment-analytics table (headers + rows) for display in a
- * data table. Uses the same coordinate dimensions + created/last-updated-by
- * columns and the same user/period filters as the point fetch, so the table
- * matches what's drawn on the map.
- */
-export async function fetchEnrollmentAnalyticsTable(
-  engine: Engine,
-  opts: {
-    program: string;
-    orgUnit: string;
-    dimensions: CoordinateDimension[];
-    period?: string;
-    userFilter?: string | null;
-    pageSize?: number;
-    maxPages?: number;
-  }
-): Promise<AnalyticsTable> {
-  const dims = opts.dimensions;
-  const userFilter = opts.userFilter ? opts.userFilter.toLowerCase() : null;
-
-  const baseHeaders = ['ouname', 'createdbydisplayname', 'lastupdatedbydisplayname', 'lastupdated'];
-  const dimHeaders = dims.map((d) => d.dimensionId);
-  const dimensionParam = [...dimHeaders, `ou:${opts.orgUnit}`].join(',');
-  const headers = [...baseHeaders, ...dimHeaders].join(',');
-
-  const pageSize = opts.pageSize ?? 100;
-  const maxPages = opts.maxPages ?? 20;
-
-  let columns: AnalyticsTableColumn[] = [];
-  const rows: string[][] = [];
-  let createdByIdx = -1;
-  let lastUpdatedByIdx = -1;
-
-  for (let page = 1; page <= maxPages; page++) {
-    const data: any = await engine.query({
-      a: {
-        resource: `analytics/enrollments/query/${opts.program}`,
-        params: {
-          dimension: dimensionParam,
-          headers,
-          outputType: 'ENROLLMENT',
-          displayProperty: 'NAME',
-          totalPages: 'false',
-          rowContext: 'true',
-          includeMetadataDetails: 'true',
-          ...(opts.period ? { lastUpdated: opts.period } : {}),
-          pageSize,
-          page,
-        },
-      },
-    });
-    const resp = data.a;
-    const respHeaders: any[] = resp?.headers ?? [];
-    const respRows: any[][] = resp?.rows ?? [];
-    const items: Record<string, any> = resp?.metaData?.items ?? {};
-
-    if (page === 1) {
-      columns = respHeaders.map((h) => ({
-        name: h.name,
-        label: items[h.name]?.name ?? h.column ?? h.name,
-      }));
-      createdByIdx = respHeaders.findIndex((h) => h.name === 'createdbydisplayname');
-      lastUpdatedByIdx = respHeaders.findIndex((h) => h.name === 'lastupdatedbydisplayname');
-    }
-    if (respRows.length === 0) break;
-
-    for (const row of respRows) {
-      if (userFilter) {
-        const c = createdByIdx >= 0 ? extractParenValue(row[createdByIdx]) : null;
-        const l = lastUpdatedByIdx >= 0 ? extractParenValue(row[lastUpdatedByIdx]) : null;
-        if (c !== userFilter && l !== userFilter) continue;
-      }
-      rows.push(row.map((v) => (v == null ? '' : String(v))));
-    }
-
-    if (respRows.length < pageSize) break;
-  }
-
-  return { columns, rows, total: rows.length };
+  return {
+    pointsByDimension,
+    metaDataItems,
+    nonEmptyDimensionIds,
+    table: { columns, rows: tableRows, total: tableRows.length },
+  };
 }

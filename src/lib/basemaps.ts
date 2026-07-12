@@ -95,6 +95,6 @@ export const DEFAULT_OVERLAYS: OverlayToggles = {
   settlements: true,
   points: true,
   flagged: true,
-  boundaries: false,
+  boundaries: true,
   settlementBoundaries: true,
 };

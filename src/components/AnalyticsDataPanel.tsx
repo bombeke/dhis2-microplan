@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAnalyticsTable } from '../hooks/useAnalyticsTable';
+import { AnalyticsTable } from '@/lib/analyticsEnrollments';
 
 /**
  * A modern button pinned at the bottom of the map. On click it opens a clean
@@ -12,23 +12,19 @@ export const AnalyticsDataPanel: React.FC<{
   orgUnitId: string | null;
   period?: string | null;
   userFilter?: string | null;
-  selectedDimensionIds?: string[];
-}> = ({ program, orgUnitId, period, userFilter, selectedDimensionIds }) => {
+  tableResult?: AnalyticsTable;
+}> = ({ program, orgUnitId, period, userFilter, tableResult: data }) => {
   const [open, setOpen] = useState(false);
-  const { data, isFetching, isError, error } = useAnalyticsTable(
-    { program, orgUnit: orgUnitId, period, userFilter, selectedDimensionIds },
-    open
-  );
-
-  const disabled = !program || !orgUnitId;
+  const enabled = !!program && !!orgUnitId && !!period && !!userFilter;
+  console.log("disabled:",enabled);
 
   return (
     <>
       <button
         className="datapanel__fab"
         onClick={() => setOpen((o) => !o)}
-        disabled={disabled}
-        title={disabled ? 'Select a program and org unit first' : 'View the underlying data'}
+        disabled={!enabled}
+        title={!enabled ? 'Select a program and org unit first' : 'View the underlying data'}
       >
         <span className="datapanel__fab-icon">▤</span>
         {open ? 'Hide data' : 'View data'}
@@ -47,13 +43,7 @@ export const AnalyticsDataPanel: React.FC<{
           </div>
 
           <div className="datapanel__body">
-            {isFetching && <div className="datapanel__state">Loading data…</div>}
-            {isError && (
-              <div className="datapanel__state datapanel__state--err">
-                Failed to load: {(error as Error)?.message}
-              </div>
-            )}
-            {data && !isFetching && data.rows.length === 0 && (
+            {data && data.rows.length === 0 && (
               <div className="datapanel__state">No rows for the current selection.</div>
             )}
             {data && data.rows.length > 0 && (

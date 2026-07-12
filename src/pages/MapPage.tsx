@@ -6,8 +6,8 @@ import { useMicroplanIndex } from '../hooks/useMicroplans';
 import { loadMicroplan } from '../lib/microplanStore';
 import type { StoredMicroplan } from '../lib/microplanStore';
 import { weekSettlementsFromTeamPlans } from '../lib/teamSettlements';
-import type { Settlement, TeamPlan } from '../types';
-import { MapFilterBar, filterIndex } from '../components/MapFilterBar';
+import type { FlagResult, Settlement, TeamPlan } from '../types';
+import { MapFilterBar, filterIndex, getLatestMicroPlan } from '../components/MapFilterBar';
 import { Dhis2Map, type MicroplanLayerData } from '../components/Dhis2Map';
 import { LayerControl } from '../components/LayerControl';
 import { CoordinateLayerControl } from '../components/CoordinateLayerControl';
@@ -82,6 +82,7 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
   // Step 1+2: for the selected user's week settlements, fetch their geojson
   // from the Settlements_in_Nigeria geoservice (searched by name) and merge
   // into one FeatureCollection for the map's fill layer.
+  // Depreceated
   const { data: weekGeojson } = useSettlementGeoservice(selectedLayers?.weekSettlements);
   const settlementGeojson = useMemo<GeoJSON.FeatureCollection>(() => {
     const features = (weekGeojson ?? []).flatMap((w) => w.geojson.features);
@@ -125,10 +126,12 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
     .map((e) => e.id)
     .filter((id) => activeMicroplanIds.length === 0 || activeMicroplanIds.includes(id));
 
+  const latestMicroplan = getLatestMicroPlan(index, mapFilters);
+  console.log("latest: Plan::", latestMicroplan)
+
   // load each active microplan in full (cached per id)
   const planQueries = useQueries({
-    //queries: idsToShow.map((id) => ({
-    queries: index.map((e) => ({
+    queries: latestMicroplan.map((e) => ({
       queryKey: ['microplan', e.id],
       queryFn: () => loadMicroplan(engine as any, e.id),
       staleTime: 60_000,
@@ -137,7 +140,7 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
 
 
   // for each loaded plan, fetch + flag points
-  const pointQueries = useQueries({
+  /*const pointQueries = useQueries({
     queries: idsToShow.map((id) => {
       const meta = index.find((e) => e.id === id);
       return {
@@ -163,24 +166,31 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
       };
     }),
   });
+  */
 
   const microplans: MicroplanLayerData[] = useMemo(() => {
-    //return idsToShow.map((id, i) => {
-    return index.map((e, i) => {
+    return latestMicroplan.map((e, i) => {
       const plan = planQueries[i]?.data;
-      const points = (pointQueries[i]?.data ?? []) as ReturnType<typeof flagPoints> extends never
+      /*const points = (pointQueries[i]?.data ?? []) as ReturnType<typeof flagPoints> extends never
         ? never
         : any[];
-      
+        */
+      console.log("Points:",visibleSelected)
+
       const settlements: Settlement[] = plan?.settlements ?? [];
-      const settlementMap = new Map(settlements.map((s) => [s.id, s]));
-      const assigned = assignedByTeamFrom(plan?.teamPlans ?? []);
+      //const settlementMap = new Map(settlements.map((s) => [s.id, s]));
+      //const assigned = assignedByTeamFrom(plan?.teamPlans ?? []);
       
-      const flags = points.length ? flagPoints(points as any, settlementMap, assigned) : [];
+      //const flags = points.length ? flagPoints(points as any, settlementMap, assigned) : [];
+      const flags: FlagResult[] = [];
       return { id: e.id, settlements, flags };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idsToShow.join(','), planQueries.map((q) => q?.data?.uploadedAt).join(','), pointQueries.map((q) => q.dataUpdatedAt).join(',')]);
+  }, [
+    latestMicroplan.join(','), 
+    planQueries.map((q) => q?.data?.uploadedAt).join(','), 
+    //pointQueries.map((q) => q.dataUpdatedAt).join(',')
+  ]);
 
   // Aggregate team plans across the loaded microplans → team-code options for
   // the "All Teams" field, and the week-grouped settlement NAMES for the
@@ -210,8 +220,8 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
     return { type: 'FeatureCollection', features };
   }, [teamWeekGeojson]);
 
-  const loading =
-    planQueries.some((q) => q.isLoading) || pointQueries.some((q) => q.isLoading) || selectedFetching;
+ // const loading = planQueries.some((q) => q.isLoading) || pointQueries.some((q) => q.isLoading) || selectedFetching;
+  const loading = planQueries.some((q) => q.isLoading) || selectedFetching;
 
   return (
     <div className="page page--map">
@@ -274,7 +284,7 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
           orgUnitId={mapFilters.orgUnitId}
           period={mapFilters.period}
           userFilter={userFilter}
-          selectedDimensionIds={selectedDimensions}
+          tableResult={ selectedLayers?.tableResult}
         />
       </div>
     </div>

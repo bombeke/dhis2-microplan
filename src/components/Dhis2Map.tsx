@@ -5,6 +5,7 @@ import bbox from '@turf/bbox';
 import type { Settlement, FlagResult, TrackerPoint } from '../types';
 import type { Basemap, OverlayToggles } from '../lib/basemaps';
 import type { SelectedOrgUnitLayers } from '../hooks/useSelectedOrgUnitLayers';
+import buffer from '@turf/buffer';
 
 /**
  * Map rendered with **maplibre-gl directly** (replacing @dhis2/maps-gl, whose
@@ -46,6 +47,7 @@ const SRC = {
   geoservice: 'sel-geoservice',
   teamGeoservice: 'sel-team-geoservice',
   orgUnit: 'sel-orgunit-boundary',
+  teamGeoserviceRadius: 'team-geoservice-radius'
 } as const;
 
 const LYR = {
@@ -69,6 +71,8 @@ const LYR = {
   teamGeoserviceLine: 'sel-team-geoservice-line',
   orgUnitFill: 'sel-orgunit-fill',
   orgUnitLine: 'sel-orgunit-line',
+  teamGeoserviceRadiusFill: 'team-geoservice-radius-fill',
+  teamGeoserviceRadiusLine: 'team-geoservice-radius-line'
 } as const;
 
 // Per-week highlight colours (weeks 1..5) for the uploaded-settlement overlay.
@@ -172,10 +176,9 @@ export const Dhis2Map: React.FC<{
       settlements: true,
       points: true,
       flagged: true,
-      boundaries: false,
+      boundaries: true,
       settlementBoundaries: true,
     };
-  console.log("geometry:",orgUnitGeojson)
   /** Run a fn once the style is loaded; queue it on 'load' otherwise. */
   const whenReady = useCallback((map: maplibregl.Map, fn: () => void) => {
     if (map.isStyleLoaded()) fn();
@@ -244,11 +247,11 @@ export const Dhis2Map: React.FC<{
     // setStyle replaces sources/layers; we re-add overlay sources on styledata.
     map.setStyle(basemapStyle(basemap));
     const reAdd = () => {
-      mountOverlays();
       mountSelected();
       mountGeoservice();
       mountTeamGeoservice();
       mountOrgUnitBoundary();
+      mountOverlays();
       map.off('styledata', reAdd);
     };
     map.on('styledata', reAdd);
@@ -263,6 +266,7 @@ export const Dhis2Map: React.FC<{
     const settlementFeatures: GeoJSON.Feature[] = [];
     const pointFeatures: GeoJSON.Feature[] = [];
     const flaggedFeatures: GeoJSON.Feature[] = [];
+    console.log("microplans:",microplans,"settlements:",settlementGeojson)
 
     for (const mp of microplans) {
       if (ov.settlements) settlementFeatures.push(...mp.settlements.map(featureFromSettlement));
@@ -277,7 +281,8 @@ export const Dhis2Map: React.FC<{
       const existing = map.getSource(id) as maplibregl.GeoJSONSource | undefined;
       if (existing) {
         existing.setData(data);
-      } else {
+      } 
+      else {
         map.addSource(id, {
           type: 'geojson',
           data,
@@ -442,12 +447,14 @@ export const Dhis2Map: React.FC<{
     if (!map) return;
 
     // Step 1 — GRID3 settlement extents as boundary-line polygons
-    const grid3Features: GeoJSON.Feature[] = (selected?.grid3 ?? []).map((s) => ({
+    /*const grid3Features: GeoJSON.Feature[] = (selected?.grid3 ?? []).map((s) => ({
       type: 'Feature',
       id: s.id,
       geometry: s.geometry,
       properties: { id: s.id, extentType: s.extentType, areaSqm: s.areaSqm },
-    }));
+    }));*/
+    const grid3Features: GeoJSON.Feature[] | any = selected?.grid3 ?? [];
+
     upsertGeoJson(map, SRC.grid3, grid3Features);
     if (!map.getLayer(LYR.grid3Fill)) {
       map.addLayer({
@@ -703,19 +710,51 @@ export const Dhis2Map: React.FC<{
       })),
     };
     upsertGeoJson(map, SRC.teamGeoservice, colored.features);
+        // 1km radius buffer around each settlement (accurate ground distance)
+    /*const buffered: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: colored.features
+        .map((f) => {
+          try {
+            const b = buffer(f as any, 500, { units: 'meters' });
+            if (!b) return null;
+            return { ...b, properties: f.properties } as GeoJSON.Feature;
+          } catch {
+            return null;
+          }
+        })
+        .filter((f): f is GeoJSON.Feature => f !== null),
+    };
+    upsertGeoJson(map, SRC.teamGeoserviceRadius, buffered.features);
 
+    if (!map.getLayer(LYR.teamGeoserviceRadiusFill)) {
+      // radius halo — added first so it renders beneath the settlement fill
+      map.addLayer({
+        id: LYR.teamGeoserviceRadiusFill,
+        type: 'fill',
+        source: SRC.teamGeoserviceRadius,
+        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.12 },
+      });
+      map.addLayer({
+        id: LYR.teamGeoserviceRadiusLine,
+        type: 'line',
+        source: SRC.teamGeoserviceRadius,
+        paint: { 'line-color': ['get', 'color'], 'line-width': 1, 'line-opacity': 0.5 },
+      });
+    }
+*/
     if (!map.getLayer(LYR.teamGeoserviceFill)) {
       map.addLayer({
         id: LYR.teamGeoserviceFill,
         type: 'fill',
         source: SRC.teamGeoservice,
-        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.3 },
+        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 },
       });
       map.addLayer({
         id: LYR.teamGeoserviceLine,
         type: 'line',
         source: SRC.teamGeoservice,
-        paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [2, 1] },
+        paint: { 'line-color': ['get', 'color'], 'line-width': 1, 'line-opacity': 0.5 },
       });
       map.on('click', LYR.teamGeoserviceFill, (e) => {
         const p = e.features?.[0]?.properties as any;
@@ -725,7 +764,8 @@ export const Dhis2Map: React.FC<{
           `<div class="map-popup__title">${escapeHtml(String(p.set_name ?? 'Settlement'))}</div>` +
             (p.week ? rowHtml('Team week', `Week ${p.week}`) : '') +
             (p.wardname ? rowHtml('Ward', String(p.wardname)) : '') +
-            (p.lganame ? rowHtml('LGA', String(p.lganame)) : ''),
+            (p.lganame ? rowHtml('LGA', String(p.lganame)) : '') +
+            (p.statename ? rowHtml('State', String(p.statename)) : ''),
           [e.lngLat.lng, e.lngLat.lat]
         );
       });
@@ -733,7 +773,12 @@ export const Dhis2Map: React.FC<{
       map.on('mouseleave', LYR.teamGeoserviceFill, () => (map.getCanvas().style.cursor = ''));
     }
 
-    for (const l of [LYR.teamGeoserviceFill, LYR.teamGeoserviceLine]) {
+    for (const l of [    
+      //LYR.teamGeoserviceRadiusFill,
+     // LYR.teamGeoserviceRadiusLine,
+      LYR.teamGeoserviceFill, 
+      LYR.teamGeoserviceLine
+    ]) {
       setLayerVisible(map, l, ov.settlementBoundaries);
     }
 
@@ -789,17 +834,6 @@ export const Dhis2Map: React.FC<{
         'line-width': 2
       },
     });
-    map.on('click', LYR.orgUnitFill, (e) => {
-      const p = e.features?.[0]?.properties as any;
-      if (!p) return;
-      openPopup(
-        map,
-        `<div class="map-popup__title">${escapeHtml(String(p.name ?? 'Org unit'))}</div>` +
-          (p.level != null ? rowHtml('Level', String(p.level)) : '') +
-          (p.code ? rowHtml('Code', String(p.code)) : ''),
-        [e.lngLat.lng, e.lngLat.lat]
-      );
-    });
   }
 
   // reuse the boundaries toggle (or add a dedicated one to OverlayToggles)
@@ -807,7 +841,7 @@ export const Dhis2Map: React.FC<{
     setLayerVisible(map, l, ov.boundaries);
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [orgUnitGeojson, openPopup, ov.boundaries]);
+}, [orgUnitGeojson, ov.boundaries]);
 
 useEffect(() => {
   const map = mapRef.current;

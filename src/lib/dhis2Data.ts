@@ -4,7 +4,7 @@ import {
   type CoordinateDimension,
 } from './programCoordinates';
 import {
-  fetchEnrollmentCoordinateAnalytics,
+  fetchEnrollmentAnalytics,
   type CoordinateAnalyticsResult,
 } from './analyticsEnrollments';
 
@@ -65,13 +65,16 @@ export async function fetchProgramCoordinatePoints(
   }
   if (dimensions.length === 0) return null;
 
-  return fetchEnrollmentCoordinateAnalytics(engine, {
-    program: opts.program,
-    orgUnit: opts.orgUnit,
-    dimensions,
-    period: opts.period,
-    userFilter: opts.userFilter ?? null,
-  });
+  return fetchEnrollmentAnalytics(
+    engine,
+    {
+      program: opts.program,
+      orgUnit: opts.orgUnit,
+      dimensions,
+      period: opts.period,
+      userFilter: opts.userFilter ?? null,
+    }
+  )
 }
 
 /** Flatten a coordinate-analytics result into a single point list. */
