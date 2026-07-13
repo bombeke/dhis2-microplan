@@ -27,6 +27,7 @@ export interface Settlement {
   source: GeoSourceKind;
   geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
   centroid: Coord;
+  bbox?: GeoJSON.BBox;
 }
 
 /** A team's plan: which settlements it visits, and in which weeks. */

@@ -104,6 +104,7 @@ export function useSelectedOrgUnitLayers(
       // ---- Step 1: GRID3 settlements by spatial envelope -------------------
       let grid3: Grid3Settlement[] | any = [];
       let grid3Truncated = false;
+      // Temporarirly disabled
       if (geometry) {
         try {
           //const envelope = geometryToEnvelope(geometry);

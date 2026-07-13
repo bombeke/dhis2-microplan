@@ -92,7 +92,7 @@ export interface OverlayToggles {
 }
 
 export const DEFAULT_OVERLAYS: OverlayToggles = {
-  settlements: true,
+  settlements: false,
   points: true,
   flagged: true,
   boundaries: true,

@@ -141,6 +141,10 @@ export async function fetchSettlementsByState(
 
   const where = `UPPER(statename) = ${sqlQuote(stateName.toUpperCase())}`;
 
+  // set_id -> already emitted. Cheap O(1) guard; also stops us paying the
+  // turf buffer cost on a duplicate we're going to throw away anyway.
+  const seen = new Set<string>();
+
   let offset = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -150,6 +154,7 @@ export async function fetchSettlementsByState(
       outFields: `${NAME_FIELD},wardname,lganame,statename,set_id`,
       returnGeometry: 'true',
       outSR: '4326',
+      orderByFields: 'set_id',   //composite key:`${props.set_id}|${props.wardname}` // stable paging — without this, offsets can repeat/skip rows
       resultOffset: String(offset),
       resultRecordCount: String(pageSize),
     });
@@ -164,11 +169,25 @@ export async function fetchSettlementsByState(
     const features = fc.features ?? [];
     for (const f of features) {
       if (!f.geometry) continue;
+
+      const props = (f.properties ?? {}) as Record<string, unknown>;
+      const id =
+        props.set_id != null
+          ? String(props.set_id)
+          : f.id != null
+            ? String(f.id)
+            : null;
+
+      if (id != null) {
+        if (seen.has(id)) continue; // dedupe before buffering
+        seen.add(id);
+      }
+
       if (f.geometry.type === 'Point') {
         try {
           const buffered = buffer(f as any, bufferMeters, { units: 'meters' });
           if (buffered) {
-            buffered.properties = { ...(f.properties ?? {}) };
+            buffered.properties = { ...props };
             out.push(buffered as GeoJSON.Feature);
           }
         } catch {

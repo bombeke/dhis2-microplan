@@ -10,11 +10,11 @@ import { BASEMAPS, type OverlayToggles } from '../lib/basemaps';
  * Collapsible so it doesn't crowd the map.
  */
 const OVERLAY_LABELS: Record<keyof OverlayToggles, string> = {
-  settlements: 'Settlement polygons',
-  points: 'Tracker / event points',
-  flagged: 'Out-of-bounds points',
-  boundaries: 'Org-unit boundaries',
-  settlementBoundaries: 'Settlement boundaries',
+  settlements: 'Settlement Boundaries',
+  points: 'Visits',
+  flagged: 'Flagged Visits',
+  boundaries: 'OrgUnit boundaries',
+  settlementBoundaries: 'Settlements (Outreach visits) ',
 };
 
 export const LayerControl: React.FC = () => {

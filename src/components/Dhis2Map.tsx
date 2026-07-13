@@ -33,7 +33,7 @@ const STAGE_COLORS: Record<string, string> = {
 
 export interface MicroplanLayerData {
   id: string;
-  settlements: Settlement[];
+  settlements?: Settlement[];
   flags: FlagResult[];
 }
 
@@ -56,6 +56,8 @@ const LYR = {
   clusters: 'mp-clusters',
   clusterCount: 'mp-cluster-count',
   point: 'mp-point',
+  flaggedClusters: 'mp-flagged-clusters',
+  flaggedClusterCount: 'mp-flagged-cluster-count',
   flagged: 'mp-flagged-point',
   // selected-org-unit overlays
   grid3Line: 'sel-grid3-line',
@@ -84,7 +86,7 @@ const WEEK_COLORS: Record<number, string> = {
   5: '#ec4899', // pink
 };
 
-const featureFromSettlement = (s: Settlement) => ({
+export const featureFromSettlement = (s: Settlement) => ({
   type: 'Feature' as const,
   id: s.id,
   geometry: s.geometry,
@@ -162,18 +164,18 @@ export const Dhis2Map: React.FC<{
   overlays?: OverlayToggles;
   loading?: boolean;
   selected?: SelectedOrgUnitLayers | null;
-  settlementGeojson?: GeoJSON.FeatureCollection | null;
   teamSettlementGeojson?: GeoJSON.FeatureCollection | null;
   orgUnitGeojson?: GeoJSON.FeatureCollection | GeoJSON.Geometry | null;
-}> = ({ microplans, basemap, overlays, loading, selected, settlementGeojson, teamSettlementGeojson, orgUnitGeojson }) => {
+}> = ({ microplans, basemap, overlays, loading, selected, teamSettlementGeojson, orgUnitGeojson }) => {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const readyRef = useRef(false);
+  const fittedRef = useRef(false);
 
   const ov: OverlayToggles =
     overlays ?? {
-      settlements: true,
+      settlements: false,
       points: true,
       flagged: true,
       boundaries: true,
@@ -182,9 +184,8 @@ export const Dhis2Map: React.FC<{
   /** Run a fn once the style is loaded; queue it on 'load' otherwise. */
   const whenReady = useCallback((map: maplibregl.Map, fn: () => void) => {
     if (map.isStyleLoaded()) fn();
-    else map.once('load', fn);
+    else map.once('idle', fn);
   }, []);
-
   // ---- init once ----------------------------------------------------------
   useEffect(() => {
     if (!ref.current || mapRef.current) return;
@@ -211,7 +212,12 @@ export const Dhis2Map: React.FC<{
     map.on('click', (e) => {
       // if a feature layer handled it, those handlers fire first and we bail
       const hit = map.queryRenderedFeatures(e.point, {
-        layers: [LYR.settlementFill, LYR.point, LYR.flagged, LYR.clusters].filter((id) =>
+        layers: [
+          LYR.point, 
+          LYR.flagged, 
+          LYR.clusters,
+          LYR.flaggedClusters
+        ].filter((id) =>
           map.getLayer(id)
         ),
       });
@@ -244,14 +250,15 @@ export const Dhis2Map: React.FC<{
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+
     // setStyle replaces sources/layers; we re-add overlay sources on styledata.
     map.setStyle(basemapStyle(basemap));
     const reAdd = () => {
-      mountSelected();
-      mountGeoservice();
-      mountTeamGeoservice();
       mountOrgUnitBoundary();
+      mountSelected();
+      mountTeamGeoservice();
       mountOverlays();
+
       map.off('styledata', reAdd);
     };
     map.on('styledata', reAdd);
@@ -263,16 +270,13 @@ export const Dhis2Map: React.FC<{
     const map = mapRef.current;
     if (!map) return;
 
-    const settlementFeatures: GeoJSON.Feature[] = [];
     const pointFeatures: GeoJSON.Feature[] = [];
     const flaggedFeatures: GeoJSON.Feature[] = [];
-    console.log("microplans:",microplans,"settlements:",settlementGeojson)
-
+    
     for (const mp of microplans) {
-      if (ov.settlements) settlementFeatures.push(...mp.settlements.map(featureFromSettlement));
       for (const f of mp.flags) {
-        if (f.inside && ov.points) pointFeatures.push(pointFeature(f.point, false));
-        else if (!f.inside && ov.flagged) flaggedFeatures.push(pointFeature(f.point, true));
+        if (f.inside) pointFeatures.push(pointFeature(f.point, false));
+        else flaggedFeatures.push(pointFeature(f.point, true));
       }
     }
 
@@ -291,40 +295,9 @@ export const Dhis2Map: React.FC<{
       }
     };
 
-    upsertSource(SRC.settlements, settlementFeatures);
     upsertSource(SRC.points, pointFeatures, true);
-    upsertSource(SRC.flagged, flaggedFeatures);
+    upsertSource(SRC.flagged, flaggedFeatures, true);
 
-    // settlement polygons
-    if (!map.getLayer(LYR.settlementFill)) {
-      map.addLayer({
-        id: LYR.settlementFill,
-        type: 'fill',
-        source: SRC.settlements,
-        paint: { 'fill-color': '#2bb5a0', 'fill-opacity': 0.18 },
-      });
-      map.addLayer({
-        id: LYR.settlementLine,
-        type: 'line',
-        source: SRC.settlements,
-        paint: { 'line-color': '#0c8f7d', 'line-width': 1 },
-      });
-      map.on('click', LYR.settlementFill, (e) => {
-        const f = e.features?.[0];
-        if (!f) return;
-        const p = f.properties as any;
-        openPopup(
-          map,
-          `<div class="map-popup__title">${escapeHtml(String(p.name ?? 'Settlement'))}</div>` +
-            (p.ward ? rowHtml('Ward', String(p.ward)) : '') +
-            (p.population != null && p.population !== 'null'
-              ? rowHtml('Population', Number(p.population).toLocaleString())
-              : '') +
-            `<div class="map-popup__coord">${fmtCoord(e.lngLat.lat)}, ${fmtCoord(e.lngLat.lng)}</div>`,
-          [e.lngLat.lng, e.lngLat.lat]
-        );
-      });
-    }
 
     // clustered in-bounds points
     if (!map.getLayer(LYR.clusters)) {
@@ -392,7 +365,7 @@ export const Dhis2Map: React.FC<{
     }
 
     // flagged points (emphasis)
-    if (!map.getLayer(LYR.flagged)) {
+    /*if (!map.getLayer(LYR.flagged)) {
       map.addLayer({
         id: LYR.flagged,
         type: 'circle',
@@ -420,10 +393,88 @@ export const Dhis2Map: React.FC<{
       map.on('mouseenter', LYR.flagged, () => (map.getCanvas().style.cursor = 'pointer'));
       map.on('mouseleave', LYR.flagged, () => (map.getCanvas().style.cursor = ''));
     }
+    */
+    
+    // clustered in-bounds points
+    if (!map.getLayer(LYR.flaggedClusters)) {
+      map.addLayer({
+        id: LYR.flaggedClusters,
+        type: 'circle',
+        source: SRC.flagged,
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': 'rgb(246, 97, 47)',
+          'circle-opacity': 0.85,
+          'circle-radius': ['step', ['get', 'point_count'], 14, 25, 20, 100, 28],
+        },
+      });
+      map.addLayer({
+        id: LYR.flaggedClusterCount,
+        type: 'symbol',
+        source: SRC.flagged,
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-font': ['Open Sans Regular'],
+          'text-size': 12,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+      map.addLayer({
+        id: LYR.flagged,
+        type: 'circle',
+        source: SRC.flagged,
+        filter: ['!', ['has', 'point_count']],
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': 5,
+          'circle-stroke-width': 1,
+          'circle-stroke-color': '#ffffff',
+        },
+      });
+      // zoom into a cluster on click (smooth easeTo)
+      map.on('click', LYR.flaggedClusters, (e) => {
+        const f = map.queryRenderedFeatures(e.point, { layers: [LYR.flaggedClusters] })[0];
+        const clusterId = f?.properties?.cluster_id;
+        const src = map.getSource(SRC.flagged) as maplibregl.GeoJSONSource;
+        if (clusterId == null || !src) return;
+        src.getClusterExpansionZoom(clusterId).then((zoom) => {
+          map.easeTo({ center: (f.geometry as any).coordinates, zoom: zoom + 0.2, duration: 500 });
+        });
+      });
+      map.on('click', LYR.flagged, (e) => {
+        const p = e.features?.[0]?.properties as any;
+        if (!p) return;
+        openPopup(
+          map,
+          `<div class="map-popup__title">${escapeHtml(String(p.name))}</div>` +
+            rowHtml('Stage', String(p.stage)) +
+            (p.teamCode ? rowHtml('Team', String(p.teamCode)) : '') +
+            `<div class="map-popup__coord">${fmtCoord(e.lngLat.lat)}, ${fmtCoord(e.lngLat.lng)}</div>`,
+          [e.lngLat.lng, e.lngLat.lat]
+        );
+      });
+      for (const id of [LYR.flaggedClusters, LYR.flagged]) {
+        map.on('mouseenter', id, () => (map.getCanvas().style.cursor = 'pointer'));
+        map.on('mouseleave', id, () => (map.getCanvas().style.cursor = ''));
+      }
+    }
+
+    for (const l of [LYR.clusters, LYR.clusterCount, LYR.point]) {
+      setLayerVisible(map, l, ov.points);
+    }
+
+    for (const l of [LYR.flaggedClusters, LYR.flaggedClusterCount, LYR.flagged]) {
+      setLayerVisible(map, l, ov.flagged);
+    }
 
     // fit to data
-    const allFeatures = [...settlementFeatures, ...pointFeatures, ...flaggedFeatures];
-    if (allFeatures.length) {
+    const allFeatures = [ 
+      ...pointFeatures, 
+      ...flaggedFeatures
+    ];
+    if (allFeatures.length && !fittedRef.current) {
+      fittedRef.current = true;
       try {
         const b = bbox({ type: 'FeatureCollection', features: allFeatures });
         map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 60, maxZoom: 13, duration: 600 });
@@ -431,8 +482,14 @@ export const Dhis2Map: React.FC<{
         /* ignore degenerate bbox */
       }
     }
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [microplans, ov.settlements, ov.points, ov.flagged, openPopup]);
+  }, [
+    microplans, 
+    ov.points, 
+    ov.flagged, 
+    openPopup
+  ]);
 
   // re-mount overlays whenever data/toggles change (guarded by style load)
   useEffect(() => {
@@ -456,6 +513,7 @@ export const Dhis2Map: React.FC<{
     const grid3Features: GeoJSON.Feature[] | any = selected?.grid3 ?? [];
 
     upsertGeoJson(map, SRC.grid3, grid3Features);
+
     if (!map.getLayer(LYR.grid3Fill)) {
       map.addLayer({
         id: LYR.grid3Fill,
@@ -483,55 +541,8 @@ export const Dhis2Map: React.FC<{
       });
     }
 
-    // Step 2 — uploaded settlements highlighted by week (one colour per week)
-    const weekFeatures: GeoJSON.Feature[] = [];
-    for (const ws of selected?.weekSettlements ?? []) {
-      for (const s of ws.settlements) {
-        weekFeatures.push({
-          type: 'Feature',
-          id: `${ws.week}:${s.id}`,
-          geometry: s.geometry,
-          properties: {
-            id: s.id,
-            name: s.name,
-            week: ws.week,
-            color: WEEK_COLORS[ws.week] ?? '#f59e0b',
-            population: s.population ?? null,
-          },
-        });
-      }
-    }
-    upsertGeoJson(map, SRC.weeks, weekFeatures);
-    if (!map.getLayer(LYR.weeksFill)) {
-      map.addLayer({
-        id: LYR.weeksFill,
-        type: 'fill',
-        source: SRC.weeks,
-        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.35 },
-      });
-      map.addLayer({
-        id: LYR.weeksLine,
-        type: 'line',
-        source: SRC.weeks,
-        paint: { 'line-color': ['get', 'color'], 'line-width': 1.5 },
-      });
-      map.on('click', LYR.weeksFill, (e) => {
-        const p = e.features?.[0]?.properties as any;
-        if (!p) return;
-        openPopup(
-          map,
-          `<div class="map-popup__title">${escapeHtml(String(p.name))}</div>` +
-            rowHtml('Outreach week', `Week ${p.week}`) +
-            (p.population != null && p.population !== 'null'
-              ? rowHtml('Population', Number(p.population).toLocaleString())
-              : ''),
-          [e.lngLat.lng, e.lngLat.lat]
-        );
-      });
-    }
-
     // Step 3 — DHIS2 event coordinates, clustered
-    const eventFeatures: GeoJSON.Feature[] = (selected?.eventPoints ?? []).map((p) => ({
+    /*const eventFeatures: GeoJSON.Feature[] = (selected?.eventPoints ?? []).map((p) => ({
       type: 'Feature',
       id: p.id,
       geometry: { type: 'Point', coordinates: p.coordinate },
@@ -594,25 +605,31 @@ export const Dhis2Map: React.FC<{
         });
       });
     }
+      */
 
     // honour the settlement-boundaries toggle for the GRID3 extents + the
     // by-week uploaded-settlement boundaries.
-    for (const l of [LYR.grid3Fill, LYR.grid3Line, LYR.weeksFill, LYR.weeksLine]) {
-      setLayerVisible(map, l, ov.settlementBoundaries);
+
+    for (const l of [LYR.grid3Fill, LYR.grid3Line]) {
+      setLayerVisible(map, l, ov.settlements);
     }
+    
 
     // fit to the selected unit's data on first population
-    const fitFeatures = [...grid3Features, ...weekFeatures, ...eventFeatures];
-    if (fitFeatures.length) {
+    const fitFeatures = [...grid3Features];
+
+    if (fitFeatures.length && !fittedRef.current) {
+      fittedRef.current = true;
       try {
         const b = bbox({ type: 'FeatureCollection', features: fitFeatures });
         map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 60, maxZoom: 14, duration: 600 });
-      } catch {
+      } 
+      catch {
         /* ignore */
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, openPopup, ov.settlementBoundaries]);
+  }, [selected, openPopup,ov.settlements]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -620,75 +637,7 @@ export const Dhis2Map: React.FC<{
     whenReady(map, mountSelected);
   }, [mountSelected, whenReady]);
 
-  // ---- settlement geoservice fill layer (step 2: type='fill') -------------
-  const mountGeoservice = useCallback(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const fc: GeoJSON.FeatureCollection =
-      settlementGeojson ?? { type: 'FeatureCollection', features: [] };
-    // colour each feature by its week (falls back to teal)
-    const colored: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: fc.features.map((f) => ({
-        ...f,
-        properties: {
-          ...(f.properties ?? {}),
-          color: WEEK_COLORS[(f.properties as any)?.week] ?? '#0d9488',
-        },
-      })),
-    };
-    upsertGeoJson(map, SRC.geoservice, colored.features);
 
-    if (!map.getLayer(LYR.geoserviceFill)) {
-      map.addLayer({
-        id: LYR.geoserviceFill,
-        type: 'fill', // step 2 explicitly asks for a fill layer
-        source: SRC.geoservice,
-        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.45 },
-      });
-      map.addLayer({
-        id: LYR.geoserviceLine,
-        type: 'line',
-        source: SRC.geoservice,
-        paint: { 'line-color': ['get', 'color'], 'line-width': 1 },
-      });
-      map.on('click', LYR.geoserviceFill, (e) => {
-        const p = e.features?.[0]?.properties as any;
-        if (!p) return;
-        openPopup(
-          map,
-          `<div class="map-popup__title">${escapeHtml(String(p.set_name ?? 'Settlement'))}</div>` +
-            (p.week ? rowHtml('Outreach week', `Week ${p.week}`) : '') +
-            (p.wardname ? rowHtml('Ward', String(p.wardname)) : '') +
-            (p.lganame ? rowHtml('LGA', String(p.lganame)) : '') +
-            (p.statename ? rowHtml('State', String(p.statename)) : ''),
-          [e.lngLat.lng, e.lngLat.lat]
-        );
-      });
-      map.on('mouseenter', LYR.geoserviceFill, () => (map.getCanvas().style.cursor = 'pointer'));
-      map.on('mouseleave', LYR.geoserviceFill, () => (map.getCanvas().style.cursor = ''));
-    }
-
-    for (const l of [LYR.geoserviceFill, LYR.geoserviceLine]) {
-      setLayerVisible(map, l, ov.settlementBoundaries);
-    }
-
-    if (colored.features.length) {
-      try {
-        const b = bbox(colored);
-        map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 60, maxZoom: 14, duration: 600 });
-      } catch {
-        /* ignore */
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settlementGeojson, openPopup, ov.settlementBoundaries]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    whenReady(map, mountGeoservice);
-  }, [mountGeoservice, whenReady]);
 
   // ---- team-based settlement fill layer (from uploaded teamPlans) ----------
   // An ADDITIONAL fill layer (distinct from the user/geoservice layer above),
@@ -773,16 +722,17 @@ export const Dhis2Map: React.FC<{
       map.on('mouseleave', LYR.teamGeoserviceFill, () => (map.getCanvas().style.cursor = ''));
     }
 
-    for (const l of [    
-      //LYR.teamGeoserviceRadiusFill,
-     // LYR.teamGeoserviceRadiusLine,
-      LYR.teamGeoserviceFill, 
-      LYR.teamGeoserviceLine
-    ]) {
+    const beforeId =
+      (map.getLayer(LYR.clusters) && LYR.clusters) ||
+      (map.getLayer(LYR.flagged) && LYR.flagged) ||
+      undefined;
+    for (const l of [LYR.teamGeoserviceFill, LYR.teamGeoserviceLine]) {
+      if (map.getLayer(l) && beforeId) map.moveLayer(l, beforeId);
       setLayerVisible(map, l, ov.settlementBoundaries);
     }
 
-    if (colored.features.length) {
+    if (colored.features.length && !fittedRef.current) {
+      fittedRef.current = true;
       try {
         const b = bbox(colored);
         map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 60, maxZoom: 14, duration: 600 });

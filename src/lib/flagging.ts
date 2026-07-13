@@ -1,7 +1,8 @@
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
 import type { Settlement, TrackerPoint, FlagResult, Coord } from '../types';
+import centroid from '@turf/centroid';
+import bbox from '@turf/bbox';
 
-/** Haversine distance in metres between two [lng,lat] coords. */
 function haversine(a: Coord, b: Coord): number {
   const R = 6371000;
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -10,33 +11,46 @@ function haversine(a: Coord, b: Coord): number {
   const lat1 = toRad(a[1]);
   const lat2 = toRad(b[1]);
   const h =
-    Math.sin(dLat / 2) ** 2 + Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
-  return 2 * R * Math.asin(Math.sqrt(h));
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(Math.min(1, h)));
 }
 
-/**
- * Flag tracker/event points against the polygons a team is actually assigned.
- *
- * `assignedIds` is the set of settlement ids the point's team should be within.
- * A point is IN-BOUNDS if it falls inside any assigned polygon. Otherwise it's
- * flagged, and we compute the nearest assigned settlement (centroid distance)
- * so the table can say *how far* off it landed — useful for triage.
- */
+/** Cheap bbox reject before the expensive ray-cast. */
+function inBbox(c: Coord, bbox: [number, number, number, number] | GeoJSON.BBox): boolean {
+  return c[0] >= bbox[0] && c[0] <= bbox[2] && c[1] >= bbox[1] && c[1] <= bbox[3];
+}
+
 export function flagPoints(
   points: TrackerPoint[],
-  settlements: Map<string, Settlement>,
-  assignedByTeam: Map<string, Set<string>>
+  settlements: Map<string, Partial<Settlement>>,
+  assignedByTeam: Map<string, Set<string>>,
+  opts?: { strictTeams?: boolean }
 ): FlagResult[] {
+  const allIds = [...settlements.keys()];
+  const strict = opts?.strictTeams ?? false;
+
   return points.map((point) => {
     const assigned = point.teamCode ? assignedByTeam.get(point.teamCode) : undefined;
-    const candidateIds = assigned ? [...assigned] : [...settlements.keys()];
+
+    // When strict, an unknown/absent team means NO candidates — the point is
+    // out-of-bounds by definition rather than accidentally matching someone
+    // else's polygon.
+    const candidateIds = assigned
+      ? [...assigned]
+      : strict
+        ? []
+        : allIds;
+
+    const coord = point.coordinate;
 
     let matchedSettlementId: string | undefined;
     for (const id of candidateIds) {
       const s = settlements.get(id);
-      if (!s) continue;
+      if (!s?.geometry) continue;
+      if (s.bbox && !inBbox(coord, s.bbox)) continue; // fast reject
       if (
-        booleanPointInPolygon(point.coordinate, {
+        booleanPointInPolygon(coord, {
           type: 'Feature',
           geometry: s.geometry,
           properties: {},
@@ -51,13 +65,17 @@ export function flagPoints(
       return { point, inside: true, matchedSettlementId };
     }
 
-    // Outside all assigned polygons — find nearest by centroid for context.
+    // Outside all candidate polygons. Nearest-centroid over the SAME candidate
+    // set when assigned; otherwise over all settlements so triage still gets a
+    // distance instead of undefined.
+    const nearestPool = candidateIds.length ? candidateIds : allIds;
+
     let nearestSettlementId: string | undefined;
     let distanceMeters = Infinity;
-    for (const id of candidateIds) {
+    for (const id of nearestPool) {
       const s = settlements.get(id);
-      if (!s) continue;
-      const d = haversine(point.coordinate, s.centroid);
+      if (!s?.centroid) continue;
+      const d = haversine(coord, s.centroid);
       if (d < distanceMeters) {
         distanceMeters = d;
         nearestSettlementId = id;
@@ -68,12 +86,40 @@ export function flagPoints(
       point,
       inside: false,
       nearestSettlementId,
-      distanceMeters: Number.isFinite(distanceMeters) ? Math.round(distanceMeters) : undefined,
+      distanceMeters: Number.isFinite(distanceMeters)
+        ? Math.round(distanceMeters)
+        : undefined,
     };
   });
 }
 
-/** Convenience: build the team -> assigned settlement-id set from team plans. */
+
+export function settlementsFrom(fc: GeoJSON.FeatureCollection): Map<string,Partial<Settlement>> {
+  const m = new Map<string, Partial<Settlement>>();
+  for (const f of fc.features) {
+    const id = String((f.properties as any)?.set_id ?? f.id ?? '');
+    if (!id || !f.geometry) continue;
+    m.set(id, {
+      id,
+      name: (f.properties as any)?.set_name,
+      geometry: f.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon,
+      centroid: centroid(f as any).geometry.coordinates as Coord,
+      bbox: bbox(f as any) as [number, number, number, number],
+    });
+  }
+  return m;
+}
+
+
+/** All points falling outside every polygon in the collection. */
+export function pointsOutside(
+  points: TrackerPoint[],
+  settlements: Map<string, Partial<Settlement>>,
+  assignedByTeam: Map<string, Set<string>> = new Map()
+): FlagResult[] {
+  return flagPoints(points, settlements, assignedByTeam).filter((r) => !r.inside);
+}
+
 export function assignedByTeamFrom(
   plans: { teamCode: string; visits: Record<string, number[]> }[]
 ): Map<string, Set<string>> {

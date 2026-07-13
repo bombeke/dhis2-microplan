@@ -6,15 +6,14 @@ import { useMicroplanIndex } from '../hooks/useMicroplans';
 import { loadMicroplan } from '../lib/microplanStore';
 import type { StoredMicroplan } from '../lib/microplanStore';
 import { weekSettlementsFromTeamPlans } from '../lib/teamSettlements';
-import type { FlagResult, Settlement, TeamPlan } from '../types';
+import type { FlagResult, TeamPlan } from '../types';
 import { MapFilterBar, filterIndex, getLatestMicroPlan } from '../components/MapFilterBar';
 import { Dhis2Map, type MicroplanLayerData } from '../components/Dhis2Map';
 import { LayerControl } from '../components/LayerControl';
 import { CoordinateLayerControl } from '../components/CoordinateLayerControl';
 import { AnalyticsDataPanel } from '../components/AnalyticsDataPanel';
 import { getBasemap } from '../lib/basemaps';
-import { fetchEnrollmentPoints, fetchEventPoints } from '../lib/dhis2Data';
-import { flagPoints, assignedByTeamFrom } from '../lib/flagging';
+import { flagPoints,  settlementsFrom } from '../lib/flagging';
 import { useOrgUnitPaths } from '../hooks/useOrgUnits';
 import { useSelectedOrgUnitLayers } from '../hooks/useSelectedOrgUnitLayers';
 import { useSettlementGeoservice } from '../hooks/useSettlementGeoservice';
@@ -79,16 +78,6 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
     }
   );
 
-  // Step 1+2: for the selected user's week settlements, fetch their geojson
-  // from the Settlements_in_Nigeria geoservice (searched by name) and merge
-  // into one FeatureCollection for the map's fill layer.
-  // Depreceated
-  const { data: weekGeojson } = useSettlementGeoservice(selectedLayers?.weekSettlements);
-  const settlementGeojson = useMemo<GeoJSON.FeatureCollection>(() => {
-    const features = (weekGeojson ?? []).flatMap((w) => w.geojson.features);
-    return { type: 'FeatureCollection', features };
-  }, [weekGeojson]);
-
   // Apply the coordinate-layer overlay toggles: keep only points from
   // dimensions the user hasn't hidden. Also count points per dimension for the
   // overlay labels.
@@ -122,12 +111,10 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
     }
   }, [filtered, activeMicroplanIds.length, setActiveMicroplanIds]);
 
-  const idsToShow = filtered
-    .map((e) => e.id)
-    .filter((id) => activeMicroplanIds.length === 0 || activeMicroplanIds.includes(id));
-
-  const latestMicroplan = getLatestMicroPlan(index, mapFilters);
-  console.log("latest: Plan::", latestMicroplan)
+  const latestMicroplan = useMemo(
+    () => getLatestMicroPlan(index, mapFilters),
+    [index, mapFilters]
+  );
 
   // load each active microplan in full (cached per id)
   const planQueries = useQueries({
@@ -138,59 +125,6 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
     })),
   });
 
-
-  // for each loaded plan, fetch + flag points
-  /*const pointQueries = useQueries({
-    queries: idsToShow.map((id) => {
-      const meta = index.find((e) => e.id === id);
-      return {
-        queryKey: ['microplan-points', id, program, meta?.period, meta?.orgUnitId],
-        enabled: !!program && !!meta,
-        staleTime: 60_000,
-        queryFn: async () => {
-          if (!program || !meta) return [];
-          const [enroll, events] = await Promise.all([
-            fetchEnrollmentPoints(engine as any, {
-              program,
-              orgUnit: meta.orgUnitId,
-              period: meta.period,
-            }),
-            fetchEventPoints(engine as any, {
-              program,
-              orgUnit: meta.orgUnitId,
-              period: meta.period,
-            }),
-          ]);
-          return [...enroll, ...events];
-        },
-      };
-    }),
-  });
-  */
-
-  const microplans: MicroplanLayerData[] = useMemo(() => {
-    return latestMicroplan.map((e, i) => {
-      const plan = planQueries[i]?.data;
-      /*const points = (pointQueries[i]?.data ?? []) as ReturnType<typeof flagPoints> extends never
-        ? never
-        : any[];
-        */
-      console.log("Points:",visibleSelected)
-
-      const settlements: Settlement[] = plan?.settlements ?? [];
-      //const settlementMap = new Map(settlements.map((s) => [s.id, s]));
-      //const assigned = assignedByTeamFrom(plan?.teamPlans ?? []);
-      
-      //const flags = points.length ? flagPoints(points as any, settlementMap, assigned) : [];
-      const flags: FlagResult[] = [];
-      return { id: e.id, settlements, flags };
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    latestMicroplan.join(','), 
-    planQueries.map((q) => q?.data?.uploadedAt).join(','), 
-    //pointQueries.map((q) => q.dataUpdatedAt).join(',')
-  ]);
 
   // Aggregate team plans across the loaded microplans → team-code options for
   // the "All Teams" field, and the week-grouped settlement NAMES for the
@@ -215,12 +149,42 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
 
   // fetch geoservice geojson for the team-derived settlement names, then merge
   const { data: teamWeekGeojson } = useSettlementGeoservice(teamWeekSettlements);
+
   const teamSettlementGeojson = useMemo<GeoJSON.FeatureCollection>(() => {
     const features = (teamWeekGeojson ?? []).flatMap((w) => w.geojson.features);
     return { type: 'FeatureCollection', features };
   }, [teamWeekGeojson]);
 
- // const loading = planQueries.some((q) => q.isLoading) || pointQueries.some((q) => q.isLoading) || selectedFetching;
+  const eventPoints =  visibleSelected?.eventPoints;
+
+  // settlementsFrom does turf centroid + bbox per feature — hoist it out of the
+  // map so it runs once, not once per microplan.
+  const settlements = useMemo(
+    () => settlementsFrom(teamSettlementGeojson),
+    [teamSettlementGeojson]
+  );
+
+  // Stable empty team map — flagging is unassigned here (points carry no
+  // teamCode), so every point is tested against every settlement.
+  const noTeams = useMemo(() => new Map<string, Set<string>>(), []);
+
+  const flags: FlagResult[] = useMemo(
+    () => (eventPoints ? flagPoints(eventPoints, settlements, noTeams) : []),
+    [eventPoints, settlements, noTeams]
+  );
+  const microplanIds = useMemo(
+      () => latestMicroplan.map((e) => e.id).join(','),
+      [latestMicroplan]
+    );
+  const microplans: MicroplanLayerData[] = useMemo(
+    () => latestMicroplan.map((e) => ({ 
+      id: e.id, 
+      settlements: [],  //settlements, 
+      flags 
+    })),
+    [microplanIds, flags]
+  );
+ 
   const loading = planQueries.some((q) => q.isLoading) || selectedFetching;
 
   return (
@@ -233,7 +197,6 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
           overlays={overlays}
           loading={loading}
           selected={visibleSelected}
-          settlementGeojson={settlementGeojson}
           teamSettlementGeojson={teamSettlementGeojson}
           orgUnitGeojson={selectedLayers?.geometry ?? null}
         />
@@ -253,22 +216,21 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
           {microplans.reduce((n, m) => n + m.flags.filter((f) => !f.inside).length, 0)} flagged
           {selectedLayers && (
             <>
-              {' '}· <strong>{selectedLayers.grid3.length}</strong> GRID3
+              {' '}· <strong>{selectedLayers.grid3.length}</strong> Settlements
               {selectedLayers.grid3Truncated ? '+' : ''} ·{' '}
-              <strong>{selectedLayers.eventPoints.length}</strong> events
+              <strong>{selectedLayers.eventPoints.length}</strong> Visits
             </>
           )}
           {selectedTeamCode && teamSettlementGeojson.features.length > 0 && (
             <>
-              {' '}· <strong>{teamSettlementGeojson.features.length}</strong> team settlements
-              {' '}(vs <strong>{settlementGeojson.features.length}</strong> user)
+              {' '}· <strong>{teamSettlementGeojson.features.length}</strong> Settlements visited by { mapFilters.uploadedById }        
             </>
           )}
         </div>
         {selectedLayers && selectedLayers.weekSettlements.length > 0 && (
           <div className="mapwrap__weeks">
             <span className="mapwrap__weeks-title">Outreach weeks</span>
-            {selectedLayers.weekSettlements.map((ws) => (
+            {teamWeekSettlements.map((ws) => (
               <span key={ws.week} className="weekchip">
                 <span
                   className="weekchip__dot"

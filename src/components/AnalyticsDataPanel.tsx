@@ -16,7 +16,6 @@ export const AnalyticsDataPanel: React.FC<{
 }> = ({ program, orgUnitId, period, userFilter, tableResult: data }) => {
   const [open, setOpen] = useState(false);
   const enabled = !!program && !!orgUnitId && !!period && !!userFilter;
-  console.log("disabled:",enabled);
 
   return (
     <>
