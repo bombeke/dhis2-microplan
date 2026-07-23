@@ -3,6 +3,7 @@ import { useMicroplanIndex, useDeleteMicroplan } from '../hooks/useMicroplans';
 import { useStore } from '../store/useStore';
 import { RELATIVE_PERIODS } from '../lib/periods';
 import { useRoute } from '../hooks/useRoute';
+import { useUserPermissions } from '@/hooks/useUserPermissions';
 
 const periodName = (id: string) => RELATIVE_PERIODS.find((p) => p.id === id)?.name ?? id;
 
@@ -13,6 +14,10 @@ const periodName = (id: string) => RELATIVE_PERIODS.find((p) => p.id === id)?.na
  */
 export const FilesPage: React.FC = () => {
   const { data: files, isLoading, error } = useMicroplanIndex();
+  const { permissions, isLoading: permLoading } = useUserPermissions();
+
+  const canDeletePlan = permissions?.canAny(['F_DELETE_MICROPLAN', 'ALL']);
+
   const del = useDeleteMicroplan();
   const { activeMicroplanIds, toggleMicroplan } = useStore();
   const [, navigate] = useRoute();
@@ -39,8 +44,8 @@ export const FilesPage: React.FC = () => {
         <table className="filetable">
           <thead>
             <tr>
-              <th>File</th><th>Program</th><th>Period</th><th>Org unit</th><th>Lvl</th>
-              <th>Teams</th><th>Settlements</th><th>Uploaded by</th><th>When</th><th></th>
+              <th>File</th><th>Program</th><th>Period</th><th>Org unit</th><th>Level</th>
+              <th>Teams</th><th>Settlements</th><th>Uploaded by</th><th>Created</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -59,14 +64,18 @@ export const FilesPage: React.FC = () => {
                   <button className="btn btn--sm" onClick={() => showOnMap(f.id)}>
                     {activeMicroplanIds.includes(f.id) ? 'On map ✓' : 'Show on map'}
                   </button>
-                  <button
-                    className="btn btn--sm btn--danger"
-                    onClick={() => {
-                      if (confirm(`Delete "${f.fileName}"?`)) del.mutate(f.id);
-                    }}
-                  >
-                    Delete
-                  </button>
+                  {
+                    canDeletePlan && (
+                      <button
+                        className="btn btn--sm btn--danger"
+                        onClick={() => {
+                          if (confirm(`Delete "${f.fileName}"?`)) del.mutate(f.id);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    )
+                  }
                 </td>
               </tr>
             ))}

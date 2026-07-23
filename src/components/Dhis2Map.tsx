@@ -33,7 +33,6 @@ const STAGE_COLORS: Record<string, string> = {
 
 export interface MicroplanLayerData {
   id: string;
-  settlements?: Settlement[];
   flags: FlagResult[];
 }
 

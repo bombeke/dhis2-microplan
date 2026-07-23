@@ -19,7 +19,12 @@ const config = {
   viteConfigExtensions: './vite.config.extensions.mts',
 
   // Custom authorities can be declared here if you gate features by role.
-  authorities: ['ALL'],
+  authorities: [
+    'ALL',
+    'F_VIEW_MICROPLAN',
+    'F_ADD_MICROPLAN',
+    'F_DELETE_MICROPLAN'
+  ],
 };
 
 module.exports = config;

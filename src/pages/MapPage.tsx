@@ -179,7 +179,6 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
   const microplans: MicroplanLayerData[] = useMemo(
     () => latestMicroplan.map((e) => ({ 
       id: e.id, 
-      settlements: [],  //settlements, 
       flags 
     })),
     [microplanIds, flags]

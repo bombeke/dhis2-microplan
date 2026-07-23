@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 :root {
   --bg: #f6f8fa; --panel: #ffffff; --panel2: #f0f3f6; --line: #e3e8ee;
   --ink: #1a2230; --muted: #5d6b7a; --faint: #8a97a6;

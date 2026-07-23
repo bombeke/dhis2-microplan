@@ -6,6 +6,7 @@ import { GlobalSearch } from '../components/GlobalSearch';
 import { MapPage } from './MapPage';
 import { UploadPage } from './UploadPage';
 import { FilesPage } from './FilesPage';
+import { Footer } from './Footer';
 
 /**
  * Top-level shell: a slim nav bar plus a hash-routed page area.
@@ -37,7 +38,9 @@ export const AppShell: React.FC = () => {
   );
 
   return (
-    <div className="app-shell">
+    // min-h-screen + flex-col so the footer sits at the bottom on short pages
+    // but is pushed down by long ones (no fixed positioning over the map).
+    <div className="app-shell flex min-h-screen flex-col">
       <header className="app-shell__bar">
         <h1>Outreach Microplan &amp; Coverage</h1>
         <nav className="nav">
@@ -50,11 +53,13 @@ export const AppShell: React.FC = () => {
         {user && <span className="app-shell__user">{user.name}</span>}
       </header>
 
-      <div className="app-shell__page">
+      <div className="app-shell__page flex-1">
         {route === 'map' && <MapPage program={PROGRAM} />}
         {route === 'upload' && <UploadPage />}
         {route === 'files' && <FilesPage />}
       </div>
+
+      <Footer/>
     </div>
   );
 };

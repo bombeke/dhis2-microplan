@@ -1,5 +1,5 @@
 import { fileURLToPath, URL } from 'node:url'
-
+import tailwindcss from '@tailwindcss/vite';
 /**
  * Vite config extension, merged into @dhis2/cli-app-scripts' own Vite config
  * (App Platform v12+). The exported object must satisfy Vite's UserConfig
@@ -47,6 +47,9 @@ const config = {
     ],
   },
   assetsInclude: ['**/*.pmtiles'],
+  plugins: [
+    tailwindcss(),
+  ],
 }
 
 export default config
