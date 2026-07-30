@@ -217,7 +217,7 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
             <>
               {' '}· <strong>{selectedLayers.grid3.length}</strong> Settlements
               {selectedLayers.grid3Truncated ? '+' : ''} ·{' '}
-              <strong>{selectedLayers.eventPoints.length}</strong> Visits
+              <strong>{selectedLayers.eventPoints.length}</strong> Children visited
             </>
           )}
           {selectedTeamCode && teamSettlementGeojson.features.length > 0 && (
@@ -226,7 +226,7 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
             </>
           )}
         </div>
-        {selectedLayers && selectedLayers.weekSettlements.length > 0 && (
+        {teamWeekSettlements && teamWeekSettlements.length > 0 && (
           <div className="mapwrap__weeks">
             <span className="mapwrap__weeks-title">Outreach weeks</span>
             {teamWeekSettlements.map((ws) => (

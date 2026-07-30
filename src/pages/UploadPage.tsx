@@ -7,7 +7,7 @@ import {
   useSaveMicroplan,
 } from '../hooks/useMicroplans';
 import { useStore } from '../store/useStore';
-import { RELATIVE_PERIODS } from '../lib/periods';
+import { formatDate, RELATIVE_PERIODS } from '../lib/periods';
 import { OrgUnitPicker } from '../components/OrgUnitPicker';
 import { ProgramSelect } from '../components/ProgramSelect';
 import { usePrograms } from '../hooks/usePrograms';
@@ -37,7 +37,7 @@ export const UploadPage: React.FC = () => {
 
   const onFile = async (file?: File) => {
     if (!file) return;
-    setFileName(file.name);
+    setFileName(`${file.name}_${formatDate(new Date())}`);
     setStatus('Parsing…');
     try {
       const parsed = await parseUpload(file);
@@ -109,7 +109,7 @@ export const UploadPage: React.FC = () => {
       <h2>Upload microplan</h2>
       <p className="page__lead">
         Upload a CSV/Excel microplan, tag it with a reporting period and
-        organisation unit, and save it to the DHIS2 dataStore.
+        organisation unit, and save it to the DHIS2.
       </p>
 
       <div
@@ -129,7 +129,7 @@ export const UploadPage: React.FC = () => {
         />
         <label htmlFor="file" className="upload__hit">
           <strong>{fileName || 'Choose or drop a file'}</strong>
-          <span>CSV / Excel — settlement, team code, ward, state, facility, weeks 1–4</span>
+          <span>CSV / Excel — settlement, team code, ward, state, facility, weeks 1–5</span>
         </label>
       </div>
 
@@ -188,7 +188,7 @@ const PreviewTable: React.FC<{ rows: MicroplanRow[] }> = ({ rows }) => (
     <table>
       <thead>
         <tr>
-          <th>Settlement</th><th>Team</th><th>Ward</th><th>Facility</th><th>Wks (settlements)</th>
+          <th>Team</th><th>State</th><th>Ward</th><th>Facility</th><th>Week 1</th><th>Week 2</th><th>Week 3</th><th>Week 4</th><th>Week 5</th>
         </tr>
       </thead>
       <tbody>
@@ -205,8 +205,8 @@ const PreviewTable: React.FC<{ rows: MicroplanRow[] }> = ({ rows }) => (
             .join(' · ');
           return (
             <tr key={i}>
-              <td>{r.settlement}</td><td>{r.teamCode}</td><td>{r.ward}</td>
-              <td>{r.facilityName}</td><td>{wks || '—'}</td>
+              <td>{r.teamCode}</td><td>{r.state}</td><td>{r.ward}</td>
+              <td>{r.facilityName}</td><td>{r.week1 || ''}</td><td>{r.week2 || ''}</td><td>{r.week3 || ''}</td><td>{r.week4 || ''}</td><td>{r.week5 || ''}</td>
             </tr>
           );
         })}

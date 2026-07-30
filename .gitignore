@@ -16,3 +16,4 @@ src/locales/
 
 dhis2-db-sierra-leone.sql.gz
 .DS_Store
+.vscode
