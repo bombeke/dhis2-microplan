@@ -66,8 +66,9 @@ export const UploadPage: React.FC = () => {
         }
       }
 
-      const byName = new Map(settlements.map((s) => [s.name.toLowerCase(), s.id]));
-      const teamPlans = buildTeamPlans(rows, (name) => byName.get(name.toLowerCase()));
+      //const byName = new Map(settlements.map((s) => [s.name.toLowerCase(), s.id]));
+      const byName = new Map(settlements.map((s) => [s.name, s.id]));
+      const teamPlans = buildTeamPlans(rows, (name) => byName.get(name));
 
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const payload: StoredMicroplan = {
@@ -83,6 +84,7 @@ export const UploadPage: React.FC = () => {
         orgUnitName: orgUnit.name,
         level: orgUnit.level,
         state: rows.find((r) => r.state)?.state ?? '',
+        lga: rows.find((r) => r.lga)?.lga ?? '',
         rowCount: rows.length,
         teamCount: teamPlans.length,
         settlementCount: settlements.length,
@@ -188,7 +190,7 @@ const PreviewTable: React.FC<{ rows: MicroplanRow[] }> = ({ rows }) => (
     <table>
       <thead>
         <tr>
-          <th>Team</th><th>State</th><th>Ward</th><th>Facility</th><th>Week 1</th><th>Week 2</th><th>Week 3</th><th>Week 4</th><th>Week 5</th>
+          <th>Team</th><th>State</th><th>LGA</th><th>Ward</th><th>Health Facility</th><th>Week 1</th><th>Week 2</th><th>Week 3</th><th>Week 4</th><th>Week 5</th>
         </tr>
       </thead>
       <tbody>
@@ -205,7 +207,7 @@ const PreviewTable: React.FC<{ rows: MicroplanRow[] }> = ({ rows }) => (
             .join(' · ');
           return (
             <tr key={i}>
-              <td>{r.teamCode}</td><td>{r.state}</td><td>{r.ward}</td>
+              <td>{r.teamCode}</td><td>{r.state}</td><td>{r.lga}</td><td>{r.ward}</td>
               <td>{r.facilityName}</td><td>{r.week1 || ''}</td><td>{r.week2 || ''}</td><td>{r.week3 || ''}</td><td>{r.week4 || ''}</td><td>{r.week5 || ''}</td>
             </tr>
           );

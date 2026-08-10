@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchSettlementsByName } from '../lib/settlementsGeoservice';
+import { fetchSettlementsByNameLocal } from '../lib/settlementsGeoservice';
 import type { WeekSettlements } from './useSelectedOrgUnitLayers';
 
 const TEN_MIN = 10 * 60_000;
@@ -40,16 +40,16 @@ export function useSettlementGeoservice(weekSettlements: WeekSettlements[] | und
         if (w.settlements.length === 0) continue;
 
         // group by ward/state so each request is scoped to one admin area
-        const groups = new Map<string, { ward: string; state: string; names: string[] }>();
+        const groups = new Map<string, { lga?: string; ward: string; state: string; names: string[] }>();
         for (const s of w.settlements) {
           const k = `${s.state.toLowerCase()}|${s.ward.toLowerCase()}`;
-          if (!groups.has(k)) groups.set(k, { ward: s.ward, state: s.state, names: [] });
+          if (!groups.has(k)) groups.set(k, {lga: s.lga, ward: s.ward, state: s.state, names: [] });
           groups.get(k)!.names.push(s.name);
         }
 
         const features: GeoJSON.Feature[] = [];
         for (const { ward, state, names } of groups.values()) {
-          const geojson = await fetchSettlementsByName(names, { ward, state });
+          const geojson = await fetchSettlementsByNameLocal(names, { ward, state });
           for (const f of geojson.features) {
             f.properties = { ...(f.properties ?? {}), week: w.week, ward, state };
           }

@@ -195,6 +195,7 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
           basemap={getBasemap(basemapId)}
           overlays={overlays}
           loading={loading}
+          selectedTeamCode={ selectedTeamCode }
           selected={visibleSelected}
           teamSettlementGeojson={teamSettlementGeojson}
           orgUnitGeojson={selectedLayers?.geometry ?? null}
@@ -222,7 +223,7 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
           )}
           {selectedTeamCode && teamSettlementGeojson.features.length > 0 && (
             <>
-              {' '}· <strong>{teamSettlementGeojson.features.length}</strong> Settlements visited by { mapFilters.uploadedById }        
+              {' '}· <strong>{teamSettlementGeojson.features.length}</strong> Settlements visited by { selectedTeamCode }        
             </>
           )}
         </div>

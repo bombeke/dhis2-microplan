@@ -8,6 +8,7 @@ export interface MicroplanRow {
   teamCode: string;
   ward: string;
   state: string;
+  lga?: string;
   facilityName: string;
   week1: string;
   week2: string;
@@ -23,6 +24,7 @@ export interface Settlement {
   ward: string;
   wardId?: string;
   state: string;
+  lga?: string;
   population?: number;
   source: GeoSourceKind;
   geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
@@ -35,6 +37,7 @@ export interface TeamPlan {
   teamCode: string;
   ward: string;
   state: string;
+  lga?: string;
   facilityName: string;
   // settlementId -> set of week numbers (1..5) in which the team visits it
   visits: Record<string, number[]>;

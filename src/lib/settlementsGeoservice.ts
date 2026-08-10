@@ -17,7 +17,10 @@ import buffer from '@turf/buffer';
 const DEFAULT_URL =
   'https://services3.arcgis.com/BU6Aadhn6tbBEdyk/arcgis/rest/services/Settlements_in_Nigeria/FeatureServer/0';
 
+const DEFAULT_URL_LOCAL ="https://maps.jsinigeria.org/collections/public.ng_settlements/items.json"
 const NAME_FIELD = 'set_name';
+
+const NAME_FIELD_LOCAL = 'settlement';
 
 export interface SettlementNameFeatureProps {
   set_name: string;
@@ -27,12 +30,87 @@ export interface SettlementNameFeatureProps {
   set_id?: string;
   week?: number; // stamped by the caller so the map can colour by week
 }
+export interface LocalSettlementNameFeatureProps {
+  settlement: string;
+  ward?: string;
+  lga?: string;
+  state?: string;
+  id?: string;
+  week?: number; // stamped by the caller so the map can colour by week
+}
 
 /** Escape a value for an ArcGIS SQL where clause (single quotes doubled). */
 export function sqlQuote(v: string): string {
   return `'${v.replace(/'/g, "''")}'`;
 }
 
+/**
+ * Query the settlements service for the given settlement names and return a
+ * polygon FeatureCollection (points buffered to small polygons for a fill
+ * layer). Names are matched case-insensitively on `set_name`. Chunks the names
+ * into batches to keep the where clause within server limits.
+ */
+export async function fetchSettlementsByNameLocal(
+  names: string[],
+  opts?: {
+    ward?: string;
+    state?: string;
+    lga?: string;
+    url?: string;
+    bufferMeters?: number;
+    signal?: AbortSignal;
+    chunkSize?: number;
+  }
+): Promise<GeoJSON.FeatureCollection> {
+  const url = opts?.url ?? DEFAULT_URL_LOCAL;
+  const bufferMeters = opts?.bufferMeters ?? 1200; //500
+  const chunkSize = opts?.chunkSize ?? 100;
+
+  const cleaned = Array.from(
+    new Set(names.map((n) => n.trim()).filter((n) => n.length > 0))
+  );
+  const out: GeoJSON.Feature[] = [];
+  if (cleaned.length === 0) return { type: 'FeatureCollection', features: out };
+
+  const scope: string[] = [];
+  const ward = opts?.ward?.trim();
+  const state = opts?.state?.trim();
+  if (ward) scope.push(`ward=${sqlQuote(ward)}`);
+  if (state) scope.push(`state=${sqlQuote(state)}`);
+
+  for (let i = 0; i < cleaned.length; i += chunkSize) {
+    const chunk = cleaned.slice(i, i + chunkSize);
+    const inList = chunk.map((n) => sqlQuote(n)).join(',');
+    const filter = [`${NAME_FIELD_LOCAL} IN (${inList})`, ...scope].join(' AND ');
+
+    const params = new URLSearchParams({
+      filter: filter,
+    });
+//encodeURIComponent(filter)
+    const res = await fetch(`${url}?${params.toString()}`, { signal: opts?.signal });
+    if (!res.ok) throw new Error(`Settlements query failed: ${res.status}`);
+    const fc = (await res.json()) as GeoJSON.FeatureCollection;
+
+    for (const f of fc.features ?? []) {
+      if (!f.geometry) continue;
+      if (f.geometry.type === 'Point') {
+        try {
+          const buffered = buffer(f as any, bufferMeters, { units: 'meters' });
+          if (buffered) {
+            buffered.properties = { ...(f.properties ?? {}) };
+            out.push(buffered as GeoJSON.Feature);
+          }
+        } catch {
+          /* skip un-bufferable */
+        }
+      } else {
+        out.push(f);
+      }
+    }
+  }
+
+  return { type: 'FeatureCollection', features: out };
+}
 /**
  * Query the settlements service for the given settlement names and return a
  * polygon FeatureCollection (points buffered to small polygons for a fill

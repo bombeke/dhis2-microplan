@@ -33,6 +33,7 @@ export interface MicroplanIndexEntry {
   orgUnitName: string;
   level: number; // org unit level the upload targets
   state: string;
+  lga?: string;
   rowCount: number;
   teamCount: number;
   settlementCount: number;

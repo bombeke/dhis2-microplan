@@ -9,18 +9,20 @@ import type { MicroplanRow, TeamPlan } from '../types';
  */
 const HEADER_ALIASES: Record<keyof MicroplanRow, string[]> = {
   settlement: ['nigeria settlements', 'settlement', 'settlement name', 'community'],
-  teamCode: ['team code', 'teamcode', 'team', 'team id'],
-  ward: ['ward', 'ward name'],
-  state: ['state', 'state name'],
-  facilityName: ['facility name', 'facility', 'health facility', 'hf'],
-  week1: ['outreach week 1', 'week 1', 'wk1', 'w1'],
-  week2: ['outreach week 2', 'week 2', 'wk2', 'w2'],
-  week3: ['outreach week 3', 'week 3', 'wk3', 'w3'],
-  week4: ['outreach week 4', 'week 4', 'wk4', 'w4'],
-  week5: ['outreach week 5', 'week 5', 'wk5', 'w5'],
+  teamCode: ['team code', 'teamcode', 'team', 'team id', 'Team Code'],
+  ward: ['ward', 'ward name', 'Ward'],
+  state: ['state', 'state name', 'State'],
+  lga: ['lga', 'lga name', 'LGA', 'Lga'],
+  facilityName: ['facility name', 'facility', 'health facility', 'hf', 'Health Facility'],
+  week1: ['outreach week 1', 'week 1', 'wk1', 'w1', 'Week 1'],
+  week2: ['outreach week 2', 'week 2', 'wk2', 'w2', 'Week 2'],
+  week3: ['outreach week 3', 'week 3', 'wk3', 'w3', 'Week 3'],
+  week4: ['outreach week 4', 'week 4', 'wk4', 'w4', 'Week 4'],
+  week5: ['outreach week 5', 'week 5', 'wk5', 'w5', 'Week 5'],
 };
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+const normLocal = (s: string) => s.trim().replace(/\s+/g, ' ');
 
 function buildHeaderMap(headers: string[]): Partial<Record<keyof MicroplanRow, number>> {
   const map: Partial<Record<keyof MicroplanRow, number>> = {};
@@ -47,6 +49,7 @@ function rowsToMicroplan(matrix: string[][]): MicroplanRow[] {
       teamCode: get(r, 'teamCode'),
       ward: get(r, 'ward'),
       state: get(r, 'state'),
+      lga: get(r, 'lga'),
       facilityName: get(r, 'facilityName'),
       week1: get(r, 'week1'),
       week2: get(r, 'week2'),
@@ -102,7 +105,7 @@ export function buildTeamPlans(
   const byTeam = new Map<string, TeamPlan>();
 
   const addVisit = (plan: TeamPlan, name: string, ward: string, week: number | null) => {
-    const settlementId = resolveSettlementId(name, ward) ?? `name:${norm(name)}`;
+    const settlementId = resolveSettlementId(name, ward) ?? `name:${normLocal(name)}`;
     const existing = plan.visits[settlementId] ?? [];
     const next = week ? [...existing, week] : existing;
     plan.visits[settlementId] = Array.from(new Set(next)).sort((a, b) => a - b);
@@ -116,6 +119,7 @@ export function buildTeamPlans(
         teamCode: row.teamCode,
         ward: row.ward,
         state: row.state,
+        lga: row.lga,
         facilityName: row.facilityName,
         visits: {},
       };
