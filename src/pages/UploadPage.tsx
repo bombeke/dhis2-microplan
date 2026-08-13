@@ -7,12 +7,13 @@ import {
   useSaveMicroplan,
 } from '../hooks/useMicroplans';
 import { useStore } from '../store/useStore';
-import { formatDate, RELATIVE_PERIODS } from '../lib/periods';
+import { formatDate, periodGenerator, RELATIVE_PERIODS } from '../lib/periods';
 import { OrgUnitPicker } from '../components/OrgUnitPicker';
 import { ProgramSelect } from '../components/ProgramSelect';
 import { usePrograms } from '../hooks/usePrograms';
 import type { StoredMicroplan } from '../lib/microplanStore';
 import type { MicroplanRow, Settlement } from '../types';
+
 
 /**
  * Dedicated upload page. Flow:
@@ -28,12 +29,14 @@ export const UploadPage: React.FC = () => {
 
   const [rows, setRows] = useState<MicroplanRow[] | null>(null);
   const [fileName, setFileName] = useState('');
-  const [period, setPeriod] = useState('THIS_MONTH');
+  const [period, setPeriod] = useState('');
   const [programId, setProgramId] = useState<string | null>(null);
   const [orgUnit, setOrgUnit] = useState<{ id: string; name: string; level: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const { data: programs = [] } = usePrograms();
+
+  const periods = periodGenerator();
 
   const onFile = async (file?: File) => {
     if (!file) return;
@@ -152,8 +155,8 @@ export const UploadPage: React.FC = () => {
           <div className="field">
             <label>Reporting period</label>
             <select value={period} onChange={(e) => setPeriod(e.target.value)}>
-              {RELATIVE_PERIODS.map((p) => (
-                <option key={p.id} value={p.id}>
+              {periods.map((p) => (
+                <option key={p.id} value={p.iso}>
                   {p.name}
                 </option>
               ))}

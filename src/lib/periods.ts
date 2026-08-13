@@ -1,5 +1,7 @@
+import { PeriodType } from 'node_modules/@dhis2/multi-calendar-dates/build/types/period-calculation/types';
 import type { Dhis2Period } from '../types';
-
+import { createFixedPeriodFromPeriodId, generateFixedPeriods } from '@dhis2/multi-calendar-dates'
+import { SupportedCalendar } from 'node_modules/@dhis2/multi-calendar-dates/build/types/types';
 /**
  * DHIS2-compatible relative periods plus a resolver to concrete date ranges,
  * so the same selection drives both analytics (`pe` dimension) and tracker
@@ -13,7 +15,14 @@ import type { Dhis2Period } from '../types';
  * `lastUpdated` (e.g. `&lastUpdated=LAST_MONTH`). Grouping drives the optgroups
  * in the Period selector.
  */
-export const RELATIVE_PERIODS: Dhis2Period[] = [
+export interface FixedPeriodType extends Dhis2Period {
+  periodTye?: PeriodType;
+  startDate?: string;
+  endDate?: string;
+  iso?: string;
+  displayName?: string;
+}
+export const RELATIVE_PERIODS: Partial<FixedPeriodType>[] = [
   // Daily
   { id: 'TODAY', name: 'Today', group: 'Daily' },
   { id: 'YESTERDAY', name: 'Yesterday', group: 'Daily' },
@@ -67,17 +76,83 @@ export const RELATIVE_PERIODS: Dhis2Period[] = [
   { id: 'LAST_5_FINANCIAL_YEARS', name: 'Last 5 financial years', group: 'Financial year' },
 ];
 
+export const periodGenerator =(year?: number, yearsCount: number = 1, periodType: PeriodType = 'MONTHLY', calendar: SupportedCalendar = "gregory")=>{
+  const result = generateFixedPeriods({
+            year: year ?? new Date().getFullYear(),
+            calendar: calendar,
+            locale: 'en',
+            periodType: periodType,
+            yearsCount: yearsCount
+        })
+  return result;
+}
+
+export const periodName = (id: string) => RELATIVE_PERIODS.find((p) => p.id === id)?.name ?? id;
+
+
+export const getPeriodName = (id: string, calendar: SupportedCalendar ="gregory")=>{
+  if (id?.includes('LAST_') || id?.includes('THIS_') || id?.includes('WEEK_') || id?.includes('TODAY') || id?.includes('YESTERDAY') || id?.includes('BIMONTHS_') || id?.includes('MONTHS_') || id?.includes('QUARTERS_')){
+    const peName = periodName(id)
+    return ({
+      displayName: peName,
+      name: peName,
+      id: id
+    })
+  }
+  return createFixedPeriodFromPeriodId({
+    periodId: id,
+    calendar: calendar,
+})
+}
+
+export const createFilterPeriods =()=>{
+  // Copy rather than alias RELATIVE_PERIODS: createFilterPeriods() is called
+  // on every relativePeriodsByGroup() invocation, so mutating the shared
+  // constant in place would re-append the generated monthly periods (and
+  // duplicate them) on every re-render.
+  let filterPeriods: Partial<FixedPeriodType>[] = [...RELATIVE_PERIODS];
+  const uniqueGroups = [...new Set(RELATIVE_PERIODS.map(({ group }) => group))];
+
+  for (const p of uniqueGroups) {
+    let g = p?.toUpperCase() as PeriodType ?? "MONTHLY";
+    if(p === 'Six-monthly'){
+      g = 'SIXMONTHLY';
+    }
+    else if(p === 'Bi-weekly'){
+      g = 'BIWEEKLY';
+    }
+    else if(p === 'Bi-monthly'){
+      g = 'BIMONTHLY';
+    }
+    else if(p === "Financial year"){
+      g = 'FYOCT';
+    }
+    else if(p === "Monthly"){
+      const periods = periodGenerator().map((pe)=>({...pe, group: p}));
+      // .concat() returns a new array — it must be reassigned, otherwise the
+      // generated periods are silently dropped.
+      filterPeriods = filterPeriods.concat(periods as any);
+    }
+    else{
+
+    }
+  }
+  return filterPeriods;
+}
+
+
 /** Relative periods grouped for optgroup rendering, preserving definition order. */
 export function relativePeriodsByGroup(): { group: string; periods: Dhis2Period[] }[] {
   const order: string[] = [];
-  const map = new Map<string, Dhis2Period[]>();
-  for (const p of RELATIVE_PERIODS) {
+  const map = new Map<string, FixedPeriodType[]>();
+  const relativePeriods = createFilterPeriods();
+  for (const p of relativePeriods) {
     const g = p.group ?? 'Other';
     if (!map.has(g)) {
       map.set(g, []);
       order.push(g);
     }
-    map.get(g)!.push(p);
+    map.get(g)!.push(p as any);
   }
   return order.map((group) => ({ group, periods: map.get(group)! }));
 }

@@ -12,6 +12,7 @@ export const PeriodSelect: React.FC<{
   onChange: (id: string | null) => void;
 }> = ({ value, onChange }) => {
   const groups = useMemo(() => relativePeriodsByGroup(), []);
+  console.log("gr:",groups);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const boxRef = useRef<HTMLDivElement>(null);

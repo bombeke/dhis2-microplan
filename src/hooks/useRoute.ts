@@ -5,11 +5,11 @@ import { useEffect, useState, useCallback } from 'react';
  * happy with hash routes and this keeps the bundle lean. Routes are simple
  * string paths like '#/map', '#/upload', '#/files'.
  */
-export type Route = 'map' | 'upload' | 'files';
+export type Route = 'map' | 'upload' | 'files' | 'guide';
 
 const parse = (): Route => {
   const h = window.location.hash.replace(/^#\/?/, '').split('/')[0];
-  if (h === 'upload' || h === 'files') return h;
+  if (h === 'upload' || h === 'files' || h === 'guide') return h;
   return 'map';
 };
 
