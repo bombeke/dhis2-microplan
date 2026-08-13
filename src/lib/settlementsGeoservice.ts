@@ -81,10 +81,12 @@ export async function fetchSettlementsByNameLocal(
   for (let i = 0; i < cleaned.length; i += chunkSize) {
     const chunk = cleaned.slice(i, i + chunkSize);
     const inList = chunk.map((n) => sqlQuote(n)).join(',');
+    const inListOr = chunk.map((n) => `${NAME_FIELD_LOCAL} ILIKE ${sqlQuote(n)}`);
     const filter = [`${NAME_FIELD_LOCAL} IN (${inList})`, ...scope].join(' AND ');
+    const filterOr = [`(${inListOr.join(' OR ')})`, ...scope].join(' AND ');
 
     const params = new URLSearchParams({
-      filter: filter,
+      filter: filterOr,
     });
 //encodeURIComponent(filter)
     const res = await fetch(`${url}?${params.toString()}`, { signal: opts?.signal });
