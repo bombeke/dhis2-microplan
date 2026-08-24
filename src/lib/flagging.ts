@@ -27,6 +27,7 @@ export function flagPoints(
   assignedByTeam: Map<string, Set<string>>,
   opts?: { strictTeams?: boolean }
 ): FlagResult[] {
+  
   const allIds = [...settlements.keys()];
   const strict = opts?.strictTeams ?? false;
 
@@ -97,7 +98,7 @@ export function flagPoints(
 export function settlementsFrom(fc: GeoJSON.FeatureCollection): Map<string,Partial<Settlement>> {
   const m = new Map<string, Partial<Settlement>>();
   for (const f of fc.features) {
-    const id = String((f.properties as any)?.set_id ?? f.id ?? '');
+    const id = String((f.properties as any)?.set_id ?? (f.properties as any)?.id ?? '');
     if (!id || !f.geometry) continue;
     m.set(id, {
       id,

@@ -100,6 +100,7 @@ const pointFeature = (p: TrackerPoint, flagged: boolean) => ({
     id: p.id,
     name: p.name ?? p.id,
     stage: p.programStage ?? p.kind,
+    stageName: p.programStageName,
     teamCode: p.teamCode ?? '',
     color: flagged ? '#ef4444' : STAGE_COLORS[p.programStage ?? 'default'] ?? STAGE_COLORS.default,
     flagged: flagged ? 1 : 0,
@@ -352,7 +353,7 @@ export const Dhis2Map: React.FC<{
         openPopup(
           map,
           `<div class="map-popup__title">${escapeHtml(String(p.name))}</div>` +
-            rowHtml('Stage', String(p.stage)) +
+            rowHtml('Vaccination Stage: ', String(p.stageName || p.stage)) +
             (p.teamCode || selectedTeamCode ? rowHtml('Team', String(p.teamCode || selectedTeamCode)) : '') +
             `<div class="map-popup__coord">${fmtCoord(e.lngLat.lat)}, ${fmtCoord(e.lngLat.lng)}</div>`,
           [e.lngLat.lng, e.lngLat.lat]
@@ -418,7 +419,7 @@ export const Dhis2Map: React.FC<{
         openPopup(
           map,
           `<div class="map-popup__title">${escapeHtml(String(p.name))}</div>` +
-            rowHtml('Vaccination Stage: ', String(p.stage)) +
+            rowHtml('Vaccination Stage: ', String(p.stageName || p.stage)) +
             (selectedTeamCode || p.teamCode ? rowHtml('Team', String(selectedTeamCode || p.teamCode)) : '') +
             (p.wardname || p.ward ? rowHtml('Ward', String(p.ward ?? p.wardname)) : '') +
             (p.lganame || p.lga ? rowHtml('LGA', String(p.lga ?? p.lganame)) : '') +

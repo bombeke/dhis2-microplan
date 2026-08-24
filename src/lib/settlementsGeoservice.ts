@@ -63,7 +63,7 @@ export async function fetchSettlementsByNameLocal(
   }
 ): Promise<GeoJSON.FeatureCollection> {
   const url = opts?.url ?? DEFAULT_URL_LOCAL;
-  const bufferMeters = opts?.bufferMeters ?? 1200; //500
+  const bufferMeters = opts?.bufferMeters ?? 500
   const chunkSize = opts?.chunkSize ?? 100;
 
   const cleaned = Array.from(
@@ -131,7 +131,7 @@ export async function fetchSettlementsByName(
   }
 ): Promise<GeoJSON.FeatureCollection> {
   const url = opts?.url ?? DEFAULT_URL;
-  const bufferMeters = opts?.bufferMeters ?? 1200; //500
+  const bufferMeters = opts?.bufferMeters ?? 500; //500
   const chunkSize = opts?.chunkSize ?? 100;
 
   const cleaned = Array.from(

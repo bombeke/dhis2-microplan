@@ -149,7 +149,6 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
 
   // fetch geoservice geojson for the team-derived settlement names, then merge
   const { data: teamWeekGeojson } = useSettlementGeoservice(teamWeekSettlements);
-
   const teamSettlementGeojson = useMemo<GeoJSON.FeatureCollection>(() => {
     const features = (teamWeekGeojson ?? []).flatMap((w) => w.geojson.features);
     return { type: 'FeatureCollection', features };

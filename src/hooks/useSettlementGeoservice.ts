@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchSettlementsByNameLocal } from '../lib/settlementsGeoservice';
 import type { WeekSettlements } from './useSelectedOrgUnitLayers';
 
-const TEN_MIN = 10 * 60_000;
+const TEN_MIN = 1 * 60_000;
 
 export interface WeekGeojson {
   week: number;
@@ -30,7 +30,7 @@ export function useSettlementGeoservice(weekSettlements: WeekSettlements[] | und
     .join(';');
 
   return useQuery<WeekGeojson[]>({
-    queryKey: ['settlement-geoservice', signature],
+    queryKey: ['settlement-geoservice-local', signature],
     enabled: !!weekSettlements && weekSettlements.some((w) => w.settlements.length > 0),
     staleTime: TEN_MIN,
     gcTime: TEN_MIN * 2,
