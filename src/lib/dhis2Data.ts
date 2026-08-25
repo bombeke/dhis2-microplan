@@ -42,6 +42,7 @@ export async function fetchProgramCoordinatePoints(
     program: string;
     orgUnit: string;
     period?: string;
+    periodType?: string | null;
     stages?: { id: string; name?: string }[];
     kindFilter?: 'attribute' | 'stageDataElement';
     /** when set, restrict to just these analytics dimension ids (the
@@ -64,7 +65,7 @@ export async function fetchProgramCoordinatePoints(
     dimensions = dimensions.filter((d) => wanted.has(d.dimensionId));
   }
   if (dimensions.length === 0) return null;
-
+  
   return fetchEnrollmentAnalytics(
     engine,
     {
@@ -72,6 +73,7 @@ export async function fetchProgramCoordinatePoints(
       orgUnit: opts.orgUnit,
       dimensions,
       period: opts.period,
+      periodType: opts.periodType,
       userFilter: opts.userFilter ?? null,
     }
   )

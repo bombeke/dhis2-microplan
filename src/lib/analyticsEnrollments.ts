@@ -89,6 +89,7 @@ export async function fetchEnrollmentAnalytics(
     orgUnit: string;
     dimensions: CoordinateDimension[];
     period?: string;
+    periodType?: string | null;
     userFilter?: string | null;
     pageSize?: number;
     maxPages?: number;
@@ -110,7 +111,11 @@ export async function fetchEnrollmentAnalytics(
       table: { columns, rows: tableRows, total: 0 },
     };
   }
-
+  let period : any = opts.period ? { lastUpdated: opts.period } : {};
+  
+  if(opts?.periodType === 'RANGE' && opts.period?.includes('_') ){
+    period =  opts.period ? { lastUpdated: opts.period } : {};
+  }
   const userFilter = opts.userFilter ? opts.userFilter.toLowerCase() : null;
 
   const baseHeaders = [
@@ -143,7 +148,8 @@ export async function fetchEnrollmentAnalytics(
           totalPages: 'false',
           rowContext: 'true',
           includeMetadataDetails: 'true',
-          ...(opts.period ? { lastUpdated: opts.period } : {}),
+          //...(opts.period ? { lastUpdated: opts.period } : {}),
+          ...period,
           pageSize,
           page,
         },

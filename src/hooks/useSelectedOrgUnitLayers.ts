@@ -64,6 +64,7 @@ export function useSelectedOrgUnitLayers(
     selectedDimensionIds?: string[];
     userFilter?: string | null;
     analyticsPeriod?: string | null;
+    analyticsPeriodType?: string | null;
     uploadedById?: string | null;
     // when set, restrict the by-week settlement extraction to this team code
     // (a team's code IS its username). null/undefined → all teams in the plans.
@@ -170,13 +171,16 @@ export function useSelectedOrgUnitLayers(
       let tableResult: AnalyticsTable =  { columns:[], rows: [], total: 0 };
 
       if (opts?.program && id && opts?.uploadedById && opts?.analyticsPeriod) {
+
         try {
+          
           const res = await fetchProgramCoordinatePoints(engine as any, {
             program: opts.program,
             orgUnit: id,
             // selected relative period drives analytics lastUpdated; default to
             // this+last month when the user hasn't picked one.
             period: opts.analyticsPeriod || 'THIS_MONTH,LAST_MONTH',
+            periodType: opts.analyticsPeriodType,
             stages,
             selectedDimensionIds: opts.selectedDimensionIds,
             userFilter: opts.userFilter,

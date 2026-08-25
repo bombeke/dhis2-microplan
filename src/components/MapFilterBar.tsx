@@ -96,7 +96,13 @@ export const MapFilterBar: React.FC<{
       { mapFilters.programId && mapFilters.orgUnitId && (
       <PeriodSelect
         value={mapFilters.period}
-        onChange={(id) => setMapFilter('period', id)}
+        onChange={(id, type) =>{
+          if( type === "RANGE"){
+            setMapFilter('periodType',type)
+            return setMapFilter('period', id)
+          }
+           return setMapFilter('period', id)
+        }}
       />
       )}
       {/*

@@ -23,6 +23,8 @@ questions:
 You work with three screens, reached from the top navigation bar: **Map**,
 **Files**, and **Upload**.
 
+![Microplanning App](images/screenshot_main.png)
+
 ---
 
 ## 2. Signing in and permissions
@@ -54,6 +56,8 @@ signed in, confirming which DHIS2 account you're using.
 
 Go to **Upload** in the navigation bar.
 
+![Microplanning Uploading](images/screenshot_uploadfile.png)
+
 ### 3.1 Prepare your file
 
 Accepted formats: **CSV, TSV, XLSX, XLS**. The parser tolerates messy
@@ -79,16 +83,25 @@ across many weeks, and a settlement can belong to multiple teams.
 ### 3.2 Upload steps
 
 1. Click **Choose or drop a file**, or drag a file onto the upload box.
+
+   ![Microplanning Uploading File](images/screenshot_uploadfile.png)
+
 2. Wait for parsing to finish — a status line shows how many rows were read,
    and a preview table shows the first 8 rows so you can sanity-check that
    columns were recognised correctly (team, state, LGA, ward, facility, and
    a visit count per week).
+
+   ![Microplanning Upload Preview](images/screenshot_uploadpreview.png)
+
 3. Fill in the three required fields that appear once a file is parsed:
    - **Activity / program** — the DHIS2 tracker program this microplan
      belongs to. Every upload must be linked to a program.
    - **Reporting period** — the outreach round/month this plan covers.
    - **Organisation unit** — the org unit (e.g. State or LGA) the plan sits
      under. Use the expandable tree to drill down; click a name to select it.
+
+    ![Microplanning Upload Save](images/screenshot_uploadsave.png)
+
 4. Click **Save to dataStore**. The app resolves settlement boundaries for
    every ward in the file (using the configured settlement-geometry source —
    GRID3/ArcGIS, PMTiles, or DHIS2 org-unit geometry) before saving.
@@ -113,6 +126,8 @@ and when.
 - **Delete** — removes the microplan permanently (you'll be asked to
   confirm). Only visible if you hold `F_DELETE_MICROPLAN` (or `ALL`).
 - **+ Upload new** — shortcut to the Upload page.
+
+![Microplanning Files](images/screenshot_fileview.png)
 
 If nothing has been uploaded yet, the page tells you so and points you to
 **Upload new**.
@@ -141,7 +156,13 @@ step — later fields appear only once the ones before them are set:
    you want plotted as coordinate layers, if the program collects more than
    one kind of geo-tagged data.
 5. **Period** — the DHIS2 relative period (e.g. "This month," "Last 3
-   months") the analytics/tracker data should be pulled for.
+   months") the analytics/tracker data should be pulled for. Open the
+   dropdown and either pick a relative period from the grouped list
+   (Daily → Yearly, searchable), or set an exact **custom date range**:
+   fill in **Start Date** and **End Date** using the calendar pickers at
+   the top of the panel, then click **Apply** (it stays disabled until
+   both dates are set). Once applied, the field shows the chosen range,
+   e.g. `2026-08-02 - 2026-08-09`, in place of a relative period name.
 
 Click **Clear** (shown once any filter is active) to reset all of them.
 
@@ -162,17 +183,30 @@ matching settlements and wards appear with their ward/state for context.
 - **Flagged (red) points** — visits recorded **outside** the team's
   assigned settlements. These are the out-of-bounds cases you should
   follow up on.
-- **Outreach week chips** — when a team is selected, colour-coded chips
-  (W1–W5) show how many settlements that team is assigned per week.
+
+  ![Microplanning Uploading](images/screenshot_points.png)
+
+- **Outreach weeks panel** — when a team is selected, a floating panel in
+  the top-left of the map lists one colour-coded chip per week that team
+  has assignments for (W1–W5), each showing how many settlements are due
+  that week. Every chip has its own checkbox, checked by default: untick
+  a week to hide its settlement shading from the map, tick it again to
+  bring it back — handy for isolating one week's outreach area at a time
+  without losing the others.
 - The **legend bar** at the bottom of the map summarises what's currently
   shown: number of microplans, number of flagged points, settlement count,
-  and (when a team is selected) how many settlements that team visited.
+  children visited, and (when a team is selected) how many settlements
+  that team visited.
+
+  ![Microplanning Map](images/screenshot_display.png)
 
 ### 5.4 Layers panel
 
 Click the **Layers** handle (top of the map controls) to open it:
 
-- **Basemap** — switch the background tile style by clicking a swatch.
+- **Basemap** — switch the background tile style by clicking a swatch:
+  *OSM Light*, *OSM Standard*, *OSM Dark*, *Satellite imagery*, or
+  *No basemap*.
 - **Overlays** — toggle individual layers on/off:
   - *Settlement Boundaries*
   - *Visits*

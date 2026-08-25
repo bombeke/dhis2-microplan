@@ -41,6 +41,9 @@ interface AppState {
   period: string;
   setPeriod: (p: string) => void;
 
+  periodType?: string | null;
+  setPeriodType: (pt: string) => void;
+
   // map filters (drive which uploaded microplans render on the map)
   mapFilters: MapFilters;
   setMapFilter: <K extends keyof MapFilters>(key: K, value: MapFilters[K]) => void;
@@ -67,12 +70,18 @@ interface AppState {
   // FilterMap: attribute / data-element dimensions the user picked to focus on
   selectedDimensions: string[];
   setSelectedDimensions: (ids: string[]) => void;
+
+  // which outreach weeks (teamWeekSettlements) are shown on the map. Same
+  // empty-convention as hiddenCoordinateDims: nothing hidden by default.
+  hiddenWeeks: number[];
+  toggleWeek: (week: number) => void;
 }
 
 /** Filters applied to the uploaded-microplan catalogue on the map page. */
 export interface MapFilters {
   uploadedById: string | null; // by user
   period: string | null; // by month/period
+  periodType?: string | null;
   level: number | null; // by org unit level
   orgUnitId: string | null; // by organisation unit
   programId: string | null; // by DHIS2 program (activity)
@@ -81,6 +90,7 @@ export interface MapFilters {
 const EMPTY_FILTERS: MapFilters = {
   uploadedById: null,
   period: null,
+  periodType: null,
   level: null,
   orgUnitId: null,
   programId: null,
@@ -113,6 +123,9 @@ export const useStore = create<AppState>((set) => ({
   setGeoSource: (geoSource) => set({ geoSource }),
   period: 'THIS_MONTH',
   setPeriod: (period) => set({ period }),
+  
+  periodType: null,
+  setPeriodType: (periodType) => set({ periodType }),
 
   mapFilters: EMPTY_FILTERS,
   setMapFilter: (key, value) =>
@@ -145,4 +158,12 @@ export const useStore = create<AppState>((set) => ({
 
   selectedDimensions: [],
   setSelectedDimensions: (ids) => set({ selectedDimensions: ids }),
+
+  hiddenWeeks: [],
+  toggleWeek: (week) =>
+    set((s) => ({
+      hiddenWeeks: s.hiddenWeeks.includes(week)
+        ? s.hiddenWeeks.filter((w) => w !== week)
+        : [...s.hiddenWeeks, week],
+    })),
 }));

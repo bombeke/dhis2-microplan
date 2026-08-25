@@ -5,7 +5,6 @@ import bbox from '@turf/bbox';
 import type { Settlement, FlagResult, TrackerPoint } from '../types';
 import type { Basemap, OverlayToggles } from '../lib/basemaps';
 import type { SelectedOrgUnitLayers } from '../hooks/useSelectedOrgUnitLayers';
-import buffer from '@turf/buffer';
 
 /**
  * Map rendered with **maplibre-gl directly** (replacing @dhis2/maps-gl, whose

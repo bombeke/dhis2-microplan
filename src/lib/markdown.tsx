@@ -3,9 +3,9 @@ import React from 'react';
 /**
  * Minimal Markdown → JSX renderer for the in-app user guide. Covers exactly
  * the subset docs/USER_GUIDE.md uses (headings, hr, GFM pipe tables, bullet
- * and numbered lists, bold, inline code, links, paragraphs) — not a general
- * CommonMark implementation. Keeping the guide's source of truth as one
- * Markdown file (imported with Vite's `?raw`) avoids a duplicate,
+ * and numbered lists, bold, inline code, links, images, paragraphs) — not a
+ * general CommonMark implementation. Keeping the guide's source of truth as
+ * one Markdown file (imported with Vite's `?raw`) avoids a duplicate,
  * drift-prone JSX copy of the same content.
  */
 
@@ -21,10 +21,10 @@ const splitTableRow = (line: string): string[] =>
 
 let keySeed = 0;
 
-/** Tokenises **bold**, `code`, and [text](url) inside a line of text. */
+/** Tokenises **bold**, `code`, ![alt](src) images, and [text](url) links inside a line of text. */
 function renderInline(text: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
-  const re = /\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)/g;
+  const re = /\*\*(.+?)\*\*|`([^`]+)`|!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
@@ -33,10 +33,12 @@ function renderInline(text: string): React.ReactNode[] {
       nodes.push(<strong key={keySeed++}>{m[1]}</strong>);
     } else if (m[2] !== undefined) {
       nodes.push(<code key={keySeed++}>{m[2]}</code>);
+    } else if (m[4] !== undefined) {
+      nodes.push(<img key={keySeed++} src={m[4]} alt={m[3]} loading="lazy" />);
     } else {
       nodes.push(
-        <a key={keySeed++} href={m[4]} target="_blank" rel="noreferrer">
-          {m[3]}
+        <a key={keySeed++} href={m[6]} target="_blank" rel="noreferrer">
+          {m[5]}
         </a>
       );
     }

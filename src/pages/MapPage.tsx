@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { useDataEngine } from '@dhis2/app-runtime';
 import { useQueries } from '@tanstack/react-query';
+import { Checkbox } from '@dhis2/ui';
 import { useStore } from '../store/useStore';
 import { useMicroplanIndex } from '../hooks/useMicroplans';
 import { loadMicroplan } from '../lib/microplanStore';
@@ -30,7 +31,7 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
   const engine = useDataEngine();
   const { data: index = [] } = useMicroplanIndex();
   const { mapFilters, activeMicroplanIds, setActiveMicroplanIds, basemapId, overlays,
-    hiddenCoordinateDims, selectedDimensions } = useStore();
+    hiddenCoordinateDims, selectedDimensions, hiddenWeeks, toggleWeek } = useStore();
   const { data: accessibleUsers = [] } = useUsers();
 
   // The program the map draws events for comes from the FilterMap program
@@ -73,6 +74,7 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
       selectedDimensionIds: selectedDimensions,
       userFilter,
       analyticsPeriod: mapFilters.period,
+      analyticsPeriodType: mapFilters.periodType,
       uploadedById: mapFilters.uploadedById,
       teamCode: selectedTeamCode,
     }
@@ -148,11 +150,14 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
   );
 
   // fetch geoservice geojson for the team-derived settlement names, then merge
+  // — excluding weeks the user has toggled off in the "Outreach weeks" legend.
   const { data: teamWeekGeojson } = useSettlementGeoservice(teamWeekSettlements);
   const teamSettlementGeojson = useMemo<GeoJSON.FeatureCollection>(() => {
-    const features = (teamWeekGeojson ?? []).flatMap((w) => w.geojson.features);
+    const features = (teamWeekGeojson ?? [])
+      .filter((w) => !hiddenWeeks.includes(w.week))
+      .flatMap((w) => w.geojson.features);
     return { type: 'FeatureCollection', features };
-  }, [teamWeekGeojson]);
+  }, [teamWeekGeojson, hiddenWeeks]);
 
   const eventPoints =  visibleSelected?.eventPoints;
 
@@ -230,13 +235,18 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
           <div className="mapwrap__weeks">
             <span className="mapwrap__weeks-title">Outreach weeks</span>
             {teamWeekSettlements.map((ws) => (
-              <span key={ws.week} className="weekchip">
+              <label key={ws.week} className="weekchip">
+                <Checkbox
+                  dense
+                  checked={!hiddenWeeks.includes(ws.week)}
+                  onChange={() => toggleWeek(ws.week)}
+                />
                 <span
                   className="weekchip__dot"
                   style={{ background: WEEK_LEGEND_COLORS[ws.week] ?? '#f59e0b' }}
                 />
                 W{ws.week} ({ws.settlements.length})
-              </span>
+              </label>
             ))}
           </div>
         )}

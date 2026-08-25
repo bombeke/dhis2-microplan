@@ -240,7 +240,7 @@ body { margin: 0; background: var(--bg); color: var(--ink);
   border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; box-shadow: var(--shadow); }
 .mapwrap__weeks-title { font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
   color: var(--muted); }
-.weekchip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.weekchip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
 .weekchip__dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 
 /* ---- required field + warning hints ------------------------------------- */
@@ -292,6 +292,13 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 .ssel__grouphead { padding: 8px 9px 4px; font-size: 10px; text-transform: uppercase;
   letter-spacing: .5px; color: var(--faint); font-weight: 600; cursor: default; }
 .ssel__opt--indent { padding-left: 18px; }
+
+/* ---- period select: custom date range (CalendarInput + Apply) ----------- */
+.ssel__daterange { display: flex; flex-direction: column; gap: 8px; padding: 10px 11px 12px;
+  border-bottom: 1px solid var(--line); cursor: default; }
+.ssel__daterow { display: flex; align-items: flex-end; gap: 8px; }
+.ssel__dateinput { flex: 1; min-width: 0; }
+.ssel__dateapply { align-self: flex-end; }
 
 /* ---- analytics data panel (button + clean table) ------------------------ */
 .datapanel__fab { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
@@ -352,3 +359,5 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 .guide table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0 16px; }
 .guide th, .guide td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .guide th { color: var(--muted); font-weight: 600; background: var(--panel2); }
+.guide img { max-width: 100%; height: auto; display: block; margin: 4px 0 16px;
+  border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
