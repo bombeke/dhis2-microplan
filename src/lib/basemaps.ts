@@ -23,8 +23,8 @@ export const BASEMAPS: Basemap[] = [
     id: 'osmLight',
     name: 'OSM Light',
     config: {
-      url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-      attribution: '© OpenStreetMap contributors © CARTO',
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: '© OpenStreetMap contributors',
       subdomains: ['a', 'b', 'c', 'd'],
       maxZoom: 19,
     },

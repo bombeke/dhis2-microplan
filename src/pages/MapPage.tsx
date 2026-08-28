@@ -222,7 +222,7 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
             <>
               {' '}· <strong>{selectedLayers.grid3.length}</strong> Settlements
               {selectedLayers.grid3Truncated ? '+' : ''} ·{' '}
-              <strong>{selectedLayers.eventPoints.length}</strong> Children visited
+              <strong>{selectedLayers.eventPoints.length}</strong> Children vaccinated
             </>
           )}
           {selectedTeamCode && teamSettlementGeojson.features.length > 0 && (
