@@ -1,4 +1,9 @@
+import { useRoute } from '../hooks/useRoute';
+
 export const Footer =()=>{
+    // The shortcut below navigates, so the footer needs the router hook —
+    // it previously called a bare `navigate` that was never in scope.
+    const [, navigate] = useRoute();
     return (
         <footer className="mt-auto border-t border-slate-200/80 bg-white">
             <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">

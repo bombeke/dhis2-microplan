@@ -48,7 +48,7 @@ export interface StoredMicroplan extends MicroplanIndexEntry {
   settlements?: Settlement[];
 }
 
-const isMissing = (e: any) =>
+export const isMissing = (e: any) =>
   e?.details?.httpStatusCode === 404 || /not found|404/i.test(e?.message ?? '');
 
 /**
@@ -120,7 +120,7 @@ async function writeIndex(engine: Engine, entries: MicroplanIndexEntry[], create
 }
 
 /** Create or replace a key, transparently choosing create vs update. */
-async function putKey(engine: Engine, key: string, data: unknown) {
+export async function putKey(engine: Engine, key: string, data: unknown) {
   // Probe existence to pick the right verb (dataStore create fails if exists,
   // update fails if absent).
   let exists = true;

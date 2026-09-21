@@ -40,3 +40,7 @@ allowBuilds:
   core-js: true
   core-js-pure: true
   esbuild: true
+
+overrides:
+  chokidar: "^5.0.0"
+ 

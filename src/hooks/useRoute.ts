@@ -3,14 +3,15 @@ import { useEffect, useState, useCallback } from 'react';
 /**
  * Tiny hash-based router — no react-router dependency. The DHIS2 app-shell is
  * happy with hash routes and this keeps the bundle lean. Routes are simple
- * string paths like '#/map', '#/upload', '#/files'.
+ * string paths like '#/map', '#/upload', '#/files', '#/export'.
  */
-export type Route = 'map' | 'upload' | 'files' | 'guide';
+export type Route = 'map' | 'upload' | 'files' | 'export' | 'guide' | 'settings';
+
+const ROUTES: Route[] = ['map', 'upload', 'files', 'export', 'guide', 'settings'];
 
 const parse = (): Route => {
   const h = window.location.hash.replace(/^#\/?/, '').split('/')[0];
-  if (h === 'upload' || h === 'files' || h === 'guide') return h;
-  return 'map';
+  return (ROUTES as string[]).includes(h) ? (h as Route) : 'map';
 };
 
 export function useRoute(): [Route, (r: Route) => void] {

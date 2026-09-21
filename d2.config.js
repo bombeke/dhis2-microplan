@@ -1,8 +1,8 @@
 /** DHIS2 application manifest. Consumed by @dhis2/cli-app-scripts. */
 const config = {
   type: 'app',
-  name: 'microplan',
-  title: 'Outreach Microplan & Coverage',
+  name: 'microplanv2',
+  title: 'Outreach Microplan & Coverage v2',
   description:
     'Team-by-ward outreach planning, settlement coverage maps, and out-of-bounds data-point flagging.',
 
@@ -22,7 +22,10 @@ const config = {
   customAuthorities: [
     'F_VIEW_MICROPLAN',
     'F_ADD_MICROPLAN',
-    'F_DELETE_MICROPLAN'
+    'F_DELETE_MICROPLAN',
+    'F_DOWNLOAD_MICROPLAN',
+    'F_ADMIN_MICROPLAN',
+    'F_READ_GPS_MICROPLAN'
   ],
 };
 

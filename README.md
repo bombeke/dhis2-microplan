@@ -108,6 +108,39 @@ flagged and annotated with the nearest assigned settlement and its distance
 (MapView) and in a virtualised side table (`components/FlagTable.tsx`,
 `@tanstack/react-virtual`) that stays light at tens of thousands of rows.
 
+**8. Export analytics data (CSV/JSON).**
+`src/lib/visualizations.ts` lists favourites from **both** metadata resources —
+`/api/visualizations` (Data Visualizer) and `/api/eventVisualizations` (Line
+Listing) — with server-side `name:ilike` search and paging, and groups them for
+the UI as *Aggregated* vs *Events / Line list* (an eventVisualization's
+`dataType` decides, not the resource it came from). It then rebuilds each
+favourite's analytics query from its stored `columns`/`rows`/`filters`, folding
+in the org-unit selections DHIS2 keeps beside `items` (`LEVEL-n`,
+`OU_GROUP-uid`, `USER_ORGUNIT*`) and the legacy `relativePeriods` flags.
+
+The metadata resource is *not* the download endpoint, and each endpoint
+qualifies data dimensions differently — that mapping is the module's real job:
+
+| Favourite | Endpoint | Dimension form |
+|---|---|---|
+| visualization (any type) | `analytics` | `dx:a;b` |
+| eventVisualization, `EVENTS` + `EVENT` | `analytics/events/query/{program}` | bare uid, stage via `stage=` |
+| eventVisualization, `EVENTS` + `ENROLLMENT` | `analytics/enrollments/query/{program}` | `{stage}[{idx}].{de}` |
+| eventVisualization, `EVENTS` + `TRACKED_ENTITY_INSTANCE` | `analytics/trackedEntities/query/{tetype}` | `{program}.{stage}[{idx}].{de}` |
+| eventVisualization, `AGGREGATED_VALUES` | `analytics/events/aggregate/{program}` | bare uid + `outputType` |
+
+`src/lib/exportRange.ts` resolves the user's range — *since a date*, or *last N
+days/weeks/months/years* for any N — into explicit `startDate`/`endDate`, which
+replace the favourite's `pe` dimension (the tracked-entity endpoint has no
+start/end pair, so the range lands on `enrollmentDate` as a custom period).
+`src/lib/analyticsExport.ts` pages whichever endpoint the request names, **500
+rows per chunk** under one `AbortSignal` (query endpoints need `totalPages=true`
+before they report a page count), resolves dimension uids to names via
+`metaData.items`, and serialises to CSV (PapaParse) or JSON.
+`pages/ExportPage.tsx` is the two-column UI — a sticky picker beside the
+four-step configuration — and the Export button unlocks only once every chunk
+has landed.
+
 ---
 
 ## Performance posture
@@ -123,11 +156,16 @@ flagged and annotated with the nearest assigned settlement and its distance
 
 ```
 src/
-  lib/        ingest, geoSources, flagging, clustering, periods, dhis2Data
-  hooks/      useOrgUnits (lazy tree), useSearchWorker (Comlink)
+  lib/        ingest, geoSources, flagging, clustering, periods, dhis2Data,
+              visualizations + analyticsExport + exportRange (analytics export),
+              microplanStore + microplanSettings (dataStore persistence)
+  hooks/      useOrgUnits (lazy tree), useSearchWorker (Comlink), useVisualizations,
+              useUserPermissions, useMicroplanSettings, useUserRoles, useUserGroups
   workers/    search.worker (FlexSearch + IndexedDB)
-  components/ UploadPanel, TeamWardList, MapView, PeriodCard, FlagTable, GlobalSearch
-  pages/      AppShell (orchestration)
+  components/ UploadPanel, TeamWardList, MapView, PeriodCard, FlagTable,
+              GlobalSearch, ExportDateRange, settings/ (admin grant screens)
+  pages/      AppShell (orchestration), Map/Files/Upload/Export/Guide/Settings pages
+  docs/       USER_GUIDE.md (rendered in-app from the app bar's ? button)
   store/      Zustand store
   types/      shared domain types
 
@@ -136,6 +174,30 @@ vite.config.extensions.mts   Vite overrides (es worker, @/ alias, dep prebundle)
 pnpm-workspace.yaml          pnpm 11 settings (hoist, engine, build approvals)
 .nvmrc / .tool-versions      Node 24 pin (nvm / asdf / mise)
 ```
+
+## Access control
+
+Microplan authorities (`F_VIEW_MICROPLAN`, `F_ADD_MICROPLAN`,
+`F_DELETE_MICROPLAN`, `F_DOWNLOAD_MICROPLAN`, `F_READ_GPS_MICROPLAN`,
+`F_ADMIN_MICROPLAN`) are declared as `customAuthorities` in `d2.config.js` and
+resolved by `hooks/useUserPermissions.ts` in two layers:
+
+1. The user's real DHIS2 authorities from `/api/me` (`ALL` short-circuits
+   everything).
+2. A fallback grant table at `dataStore/microplan/settings`, mapping those
+   authorities onto DHIS2 user roles and user groups, plus app-level group
+   membership. Edited from the in-app **Settings** page, which itself requires
+   `F_ADMIN_MICROPLAN`.
+
+The fallback is strictly additive — it can widen access but never revoke an
+authority DHIS2 grants, so the DHIS2 permission model stays authoritative. It
+exists because granting a custom authority the proper way needs rights over
+DHIS2 user roles that microplan programme staff often don't hold. See
+`lib/microplanSettings.ts` for the stored shape and `src/docs/USER_GUIDE.md`
+§7 for the administrator-facing documentation.
+
+Bootstrapping is deliberately not possible from inside the app: the first
+`F_ADMIN_MICROPLAN` has to come from a DHIS2 user role.
 
 ## Configuration notes
 
