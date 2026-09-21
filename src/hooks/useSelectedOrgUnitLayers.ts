@@ -5,7 +5,11 @@ import { readIndex, loadMicroplan } from '../lib/microplanStore';
 import { weekSettlementsFromTeamPlans } from '../lib/teamSettlements';
 import { fetchEventPoints, fetchProgramCoordinatePoints } from '../lib/dhis2Data';
 import { usePrograms } from './usePrograms';
-import type { AnalyticsTable, CoordinateAnalyticsResult } from '../lib/analyticsEnrollments';
+import type {
+  AnalyticsTable,
+  CoordinateAnalyticsResult,
+  EntityProfile,
+} from '../lib/analyticsEnrollments';
 import type { Settlement, TrackerPoint } from '../types';
 import { fetchSettlementsByState } from '@/lib/settlementsGeoservice';
 
@@ -41,6 +45,12 @@ export interface SelectedOrgUnitLayers {
   coordinateMetaItems: Record<string, { name?: string; [k: string]: unknown }>;
   coordinateDimensionIds: string[];
   tableResult: AnalyticsTable;
+  /**
+   * profileId -> the tracked entity's profile, pivoted from the same analytics
+   * row that produced its point. The map popup looks entities up here first and
+   * only then fetches the full tracker profile.
+   */
+  profilesById: Record<string, EntityProfile>;
 }
 
 export async function fetchOrgUnitGeometry(
@@ -168,7 +178,8 @@ export function useSelectedOrgUnitLayers(
       let coordinatePointsByDim: Record<string, TrackerPoint[]> = {};
       let coordinateMetaItems: CoordinateAnalyticsResult['metaDataItems'] = {};
       let coordinateDimensionIds: string[] = [];
-      let tableResult: AnalyticsTable =  { columns:[], rows: [], total: 0 };
+      let tableResult: AnalyticsTable = { columns: [], columnGroups: [], rows: [], total: 0 };
+      let profilesById: Record<string, EntityProfile> = {};
 
       if (opts?.program && id && opts?.uploadedById && opts?.analyticsPeriod) {
 
@@ -191,6 +202,7 @@ export function useSelectedOrgUnitLayers(
             coordinateDimensionIds = res.nonEmptyDimensionIds;
             eventPoints = Object.values(res.pointsByDimension).flat();
             tableResult = res.table;
+            profilesById = res.profilesById;
           } 
           else {
             // no COORDINATE dimensions on this program → legacy point fetch
@@ -216,7 +228,8 @@ export function useSelectedOrgUnitLayers(
         coordinatePointsByDim,
         coordinateMetaItems,
         coordinateDimensionIds,
-        tableResult
+        tableResult,
+        profilesById,
       };
     },
   });

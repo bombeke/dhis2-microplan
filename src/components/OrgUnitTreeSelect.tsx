@@ -1,6 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useOrgUnitTree, type OrgTreeNode } from '../hooks/useOrgUnits';
 import { useFlexFilter, type SearchOption } from '../hooks/useFlexFilter';
+import {
+  cn,
+  selectCaret,
+  selectEmpty,
+  selectOption,
+  selectOptionActive,
+  selectPanel,
+  selectPlaceholder,
+  selectSearch,
+  selectTrigger,
+  selectValue,
+} from '../lib/ui';
 
 /**
  * Org-unit selector that lets the user pick from the FULL DHIS2 hierarchy
@@ -68,35 +80,36 @@ export const OrgUnitTreeSelect: React.FC<{
   };
 
   return (
-    <div className="outree" ref={boxRef}>
+    <div className="relative w-full sm:w-auto" ref={boxRef}>
       <button
-        className="ssel__trigger"
+        className={selectTrigger}
+        type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={isLoading}
       >
-        <span className={value ? '' : 'ssel__placeholder'}>
+        <span className={value ? selectValue : selectPlaceholder}>
           {isLoading ? 'Loading org units…' : selectedName}
         </span>
-        <span className="ssel__caret">▾</span>
+        <span className={selectCaret}>▾</span>
       </button>
 
       {open && (
-        <div className="outree__panel">
+        <div className={cn(selectPanel, 'w-[min(22rem,calc(100vw-2rem))]')}>
           <input
             autoFocus
-            className="ssel__input"
+            className={selectSearch}
             placeholder={`Search ${flat.length.toLocaleString()} org units…`}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
 
           {isError && (
-            <div className="outree__error">Failed to load org units: {(error as Error)?.message}</div>
+            <div className="px-3 py-2.5 text-xs text-flag">Failed to load org units: {(error as Error)?.message}</div>
           )}
 
-          <div className="outree__body">
+          <div className="max-h-[21rem] overflow-y-auto overscroll-contain p-1">
             <div
-              className={`outree__all ${!value ? 'is-active' : ''}`}
+              className={cn(selectOption, !value && selectOptionActive)}
               onClick={() => choose(null)}
             >
               All org units
@@ -104,22 +117,26 @@ export const OrgUnitTreeSelect: React.FC<{
 
             {query.trim() ? (
               // search results (flat) while typing
-              <ul className="outree__results">
+              <ul>
                 {results.map((o) => (
                   <li
                     key={o.id}
-                    className={value === o.id ? 'is-active' : ''}
+                    className={cn(
+                      selectOption,
+                      'flex-row items-baseline justify-between gap-2',
+                      value === o.id && selectOptionActive
+                    )}
                     onClick={() => jumpTo(o.id)}
                   >
-                    <span>{o.label}</span>
-                    <small>{o.sublabel}</small>
+                    <span className="truncate">{o.label}</span>
+                    <small className="shrink-0 text-[11px] text-muted">{o.sublabel}</small>
                   </li>
                 ))}
-                {results.length === 0 && <li className="ssel__empty">No matches</li>}
+                {results.length === 0 && <li className={selectEmpty}>No matches</li>}
               </ul>
             ) : (
               // hierarchy tree when not searching
-              <div className="outree__tree">
+              <div>
                 {tree.map((n) => (
                   <OrgBranch
                     key={n.id}
@@ -151,17 +168,25 @@ const OrgBranch: React.FC<{
   const isOpen = expanded.has(node.id);
   const hasChildren = node.children.length > 0;
   return (
-    <div className="outree__branch" style={{ paddingLeft: depth * 12 }}>
-      <div className="outree__row">
+    <div style={{ paddingInlineStart: depth * 12 }}>
+      <div className="flex items-center gap-0.5">
         {hasChildren ? (
-          <button className="outree__toggle" onClick={() => onToggle(node.id)}>
+          <button
+            type="button"
+            className="w-[18px] shrink-0 p-0.5 text-[11px] text-muted"
+            onClick={() => onToggle(node.id)}
+          >
             {isOpen ? '▾' : '▸'}
           </button>
         ) : (
-          <span className="outree__spacer" />
+          <span className="inline-block w-[18px] shrink-0" />
         )}
         <button
-          className={`outree__name ${value === node.id ? 'is-selected' : ''}`}
+          type="button"
+          className={cn(
+            'flex flex-1 items-baseline gap-1.5 rounded-md px-1.5 py-1 text-left text-[13px] text-ink hover:bg-panel2',
+            value === node.id && 'bg-accent/15 text-accent'
+          )}
           onClick={() => onChoose(node.id)}
         >
           {node.name}

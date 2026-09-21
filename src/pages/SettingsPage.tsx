@@ -292,7 +292,7 @@ export const SettingsPage: React.FC = () => {
       </div>
 
       <p className="settings__provenance muted">
-        Stored in the DHIS2 dataStore at <code>{`${NAMESPACE}/${SETTINGS_KEY}`}</code>.
+        
         {server?.updatedAt && (
           <>
             {' '}Last saved {new Date(server.updatedAt).toLocaleString()}

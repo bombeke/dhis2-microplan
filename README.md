@@ -70,6 +70,20 @@ settlements per week* and *settlement-within-ward* containment.
 the settlements that team visits with name, population, and visit weeks, and
 selects the team. `components/MapView.tsx` draws those settlements as polygons.
 
+**2b. Extra data columns, the data table, and per-entity profiles.**
+`src/lib/programDimensions.ts` resolves a programme's tracked-entity attributes
+and program-stage data elements once, grouped as *Bio data* plus one group per
+stage, and is shared by the filter bar's picker, the analytics request, the
+table's grouped header and the map popup. `src/lib/analyticsEnrollments.ts`
+makes one `analytics/enrollments/query` pass serve three purposes: coordinate
+columns become map points, every column is tagged with its group for the table,
+and each row is pivoted into an `EntityProfile`. Coordinate dimensions and all
+bio-data attributes are always requested; stage data elements are opt-in via the
+filter bar, so a many-stage programme doesn't turn each pan into a 300-column
+query. `src/hooks/useTrackedEntityProfile.ts` then fetches the *complete*
+record (`tracker/trackedEntities/{id}`) on demand when a popup is opened, which
+is what fills in repeated stage events analytics flattens away.
+
 **3. Tracker / analytics extraction + clustering.**
 `src/lib/dhis2Data.ts` pulls enrollment geometry (`tracker/enrollments`),
 program-stage event geometry (`tracker/events`), and an analytics-events fallback
@@ -143,6 +157,25 @@ has landed.
 
 ---
 
+## Styling
+
+Tailwind v4 (`@tailwindcss/vite`), with the palette declared once in
+`src/styles.css` under `@theme` — `bg-panel`, `text-muted`, `border-line`,
+`shadow-float` and friends all resolve from there. Tailwind v4 also emits every
+`@theme` entry as a `:root` custom property, so the remaining hand-written CSS
+reads the same values and the two cannot drift.
+
+The map workspace — filter bar, the four filter dropdowns, layer cards, the
+profile card, the analytics sheet, the map page and the app shell — is styled
+with utilities on the elements themselves; `src/lib/ui.ts` holds the shared
+recipes so four near-identical popovers stay identical. The older pages
+(Upload, Microplans, Export, Settings, Guide) keep their hand-written CSS in
+`src/styles.css`.
+
+What deliberately stays in CSS is markup this app doesn't render: the `<th>`
+inside `@dhis2/ui`'s `DataTable`, maplibre's popup chrome, and the `is-active`
+state of a DHIS2 `Button`.
+
 ## Performance posture
 
 - Search index lives off the main thread (worker) and persists to IndexedDB.
@@ -156,14 +189,19 @@ has landed.
 
 ```
 src/
-  lib/        ingest, geoSources, flagging, clustering, periods, dhis2Data,
+  lib/        ui (shared Tailwind recipes),
+              ingest, geoSources, flagging, clustering, periods, dhis2Data,
+              programDimensions + programCoordinates + analyticsEnrollments
+              (program metadata -> analytics request -> points, table, profiles),
               visualizations + analyticsExport + exportRange (analytics export),
               microplanStore + microplanSettings (dataStore persistence)
   hooks/      useOrgUnits (lazy tree), useSearchWorker (Comlink), useVisualizations,
+              useProgramDimensions, useSelectedOrgUnitLayers, useTrackedEntityProfile,
               useUserPermissions, useMicroplanSettings, useUserRoles, useUserGroups
   workers/    search.worker (FlexSearch + IndexedDB)
-  components/ UploadPanel, TeamWardList, MapView, PeriodCard, FlagTable,
-              GlobalSearch, ExportDateRange, settings/ (admin grant screens)
+  components/ UploadPanel, TeamWardList, Dhis2Map, MapFilterBar, GroupedMultiSelect,
+              TrackedEntityProfileCard, MapFloatingCard, AnalyticsDataPanel,
+              LayerControl, GlobalSearch, ExportDateRange, settings/ (admin screens)
   pages/      AppShell (orchestration), Map/Files/Upload/Export/Guide/Settings pages
   docs/       USER_GUIDE.md (rendered in-app from the app bar's ? button)
   store/      Zustand store

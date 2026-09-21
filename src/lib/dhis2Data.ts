@@ -7,6 +7,13 @@ import {
   fetchEnrollmentAnalytics,
   type CoordinateAnalyticsResult,
 } from './analyticsEnrollments';
+import {
+  dimensionIndex,
+  fetchProgramDimensionGroups,
+  flattenDimensionGroups,
+  type DimensionGroup,
+  type DimensionOption,
+} from './programDimensions';
 
 /**
  * Pulls georeferenced points from DHIS2.
@@ -33,8 +40,22 @@ const parseGeometry = (geometry: any): Coord | null => {
 
 /**
  * Shared helper: discover a program's COORDINATE dimensions and run the
- * enrollment coordinate-analytics query. Returns null if there are no
- * coordinate dimensions (so callers can fall back to the legacy path).
+ * enrollment coordinate-analytics query. Returns null when the program has no
+ * coordinate dimensions at all (so callers can fall back to the legacy path).
+ *
+ * `selectedDimensionIds` — what the user picked in the map filter bar — is
+ * split two ways, because the two kinds of pick mean different things:
+ *
+ *   - picked COORDINATE dimensions **narrow the map layers** to just those
+ *     (this is the long-standing behaviour of the filter);
+ *   - picked non-coordinate attributes / data elements are **extra columns**:
+ *     they are added to the analytics request so they appear in the data table
+ *     and in each tracked entity's profile, but they draw nothing.
+ *
+ * Every tracked-entity attribute is requested regardless, because the profile's
+ * bio-data section is only useful when it is complete. Stage data elements are
+ * requested on demand (the picked ones), so a program with a dozen stages does
+ * not turn every map pan into a 300-column query.
  */
 export async function fetchProgramCoordinatePoints(
   engine: Engine,
@@ -45,38 +66,59 @@ export async function fetchProgramCoordinatePoints(
     periodType?: string | null;
     stages?: { id: string; name?: string }[];
     kindFilter?: 'attribute' | 'stageDataElement';
-    /** when set, restrict to just these analytics dimension ids (the
-     *  attributes / data elements the user picked in the FilterMap) */
+    /** the attributes / data elements the user picked in the FilterMap */
     selectedDimensionIds?: string[];
     /** username to filter enrollment rows by (created/last-updated-by) */
     userFilter?: string | null;
+    /** include every tracked-entity attribute as a column (default true) */
+    includeAllAttributes?: boolean;
+    /** pre-fetched program dimensions, to avoid a second metadata round-trip */
+    dimensionGroups?: DimensionGroup[];
   }
 ): Promise<CoordinateAnalyticsResult | null> {
-  // stages are optional; when omitted we still get attribute dimensions
+  // stages are optional; without them we still get attribute dimensions
   const stages = opts.stages ?? [];
-  let dimensions: CoordinateDimension[] = await fetchProgramCoordinateDimensions(
-    engine,
-    opts.program,
-    stages
-  );
-  if (opts.kindFilter) dimensions = dimensions.filter((d) => d.kind === opts.kindFilter);
-  if (opts.selectedDimensionIds && opts.selectedDimensionIds.length > 0) {
-    const wanted = new Set(opts.selectedDimensionIds);
-    dimensions = dimensions.filter((d) => wanted.has(d.dimensionId));
+  const [allCoordinateDims, groups] = await Promise.all([
+    fetchProgramCoordinateDimensions(engine, opts.program, stages),
+    opts.dimensionGroups
+      ? Promise.resolve(opts.dimensionGroups)
+      : fetchProgramDimensionGroups(engine, opts.program),
+  ]);
+
+  let coordinateDims: CoordinateDimension[] = opts.kindFilter
+    ? allCoordinateDims.filter((d) => d.kind === opts.kindFilter)
+    : allCoordinateDims;
+  if (coordinateDims.length === 0) return null;
+
+  const coordinateIds = new Set(coordinateDims.map((d) => d.dimensionId));
+  const selected = opts.selectedDimensionIds ?? [];
+  const selectedCoordinateIds = selected.filter((id) => coordinateIds.has(id));
+  const selectedExtraIds = new Set(selected.filter((id) => !coordinateIds.has(id)));
+
+  // picked coordinate dimensions narrow the drawn layers
+  if (selectedCoordinateIds.length > 0) {
+    const wanted = new Set(selectedCoordinateIds);
+    coordinateDims = coordinateDims.filter((d) => wanted.has(d.dimensionId));
   }
-  if (dimensions.length === 0) return null;
-  
-  return fetchEnrollmentAnalytics(
-    engine,
-    {
-      program: opts.program,
-      orgUnit: opts.orgUnit,
-      dimensions,
-      period: opts.period,
-      periodType: opts.periodType,
-      userFilter: opts.userFilter ?? null,
-    }
-  )
+
+  const includeAllAttributes = opts.includeAllAttributes ?? true;
+  const extraDimensions: DimensionOption[] = flattenDimensionGroups(groups).filter(
+    (o) =>
+      !coordinateIds.has(o.id) &&
+      o.valueType !== 'COORDINATE' &&
+      (selectedExtraIds.has(o.id) || (includeAllAttributes && o.kind === 'attribute'))
+  );
+
+  return fetchEnrollmentAnalytics(engine, {
+    program: opts.program,
+    orgUnit: opts.orgUnit,
+    dimensions: coordinateDims,
+    extraDimensions,
+    dimensionLookup: dimensionIndex(groups),
+    period: opts.period,
+    periodType: opts.periodType,
+    userFilter: opts.userFilter ?? null,
+  });
 }
 
 /** Flatten a coordinate-analytics result into a single point list. */

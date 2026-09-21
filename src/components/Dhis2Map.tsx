@@ -1,10 +1,13 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import bbox from '@turf/bbox';
 import type { Settlement, FlagResult, TrackerPoint } from '../types';
 import type { Basemap, OverlayToggles } from '../lib/basemaps';
+import type { EntityProfile } from '../lib/analyticsEnrollments';
 import type { SelectedOrgUnitLayers } from '../hooks/useSelectedOrgUnitLayers';
+import { TrackedEntityProfileCard } from './TrackedEntityProfileCard';
+import { MapFloatingCard, type AnchorPoint } from './MapFloatingCard';
 
 /**
  * Map rendered with **maplibre-gl directly** (replacing @dhis2/maps-gl, whose
@@ -21,6 +24,16 @@ import type { SelectedOrgUnitLayers } from '../hooks/useSelectedOrgUnitLayers';
  *  - settlements fill+line   (geoJson polygons)
  *  - clustered points        (clientCluster/donutCluster equivalent)
  *  - flagged points          (emphasis layer for out-of-bounds)
+ *
+ * **Point profiles are React, and live outside the map.** Hovering a point
+ * opens a preview and clicking pins the full tracked-entity profile; both are
+ * the same `<TrackedEntityProfileCard>`, rendered by `<MapFloatingCard>` into
+ * `document.body` rather than into a maplibre popup. A popup is a child of the
+ * map container and is clipped by it, which cut the bottom off any profile
+ * opened near an edge — exactly the part carrying the data. Positioned over the
+ * page instead, the card flips to whichever side has room and is never cropped.
+ * The lighter HTML popups (a bare coordinate, a settlement block) stay as
+ * maplibre popups: they are small enough that clipping never arises.
  */
 
 const STAGE_COLORS: Record<string, string> = {
@@ -91,20 +104,33 @@ export const featureFromSettlement = (s: Settlement) => ({
   properties: { id: s.id, name: s.name, population: s.population ?? null, ward: s.ward },
 });
 
-const pointFeature = (p: TrackerPoint, flagged: boolean) => ({
-  type: 'Feature' as const,
-  id: p.id,
-  geometry: { type: 'Point' as const, coordinates: p.coordinate },
-  properties: {
+/**
+ * One map feature per flagged/unflagged point. The properties are what the
+ * popup reads back, so the tracked entity's `profileId` travels with the
+ * feature — that is the key into the analytics profile map.
+ */
+const pointFeature = (f: FlagResult) => {
+  const p: TrackerPoint = f.point;
+  const flagged = !f.inside;
+  return {
+    type: 'Feature' as const,
     id: p.id,
-    name: p.name ?? p.id,
-    stage: p.programStage ?? p.kind,
-    stageName: p.programStageName,
-    teamCode: p.teamCode ?? '',
-    color: flagged ? '#ef4444' : STAGE_COLORS[p.programStage ?? 'default'] ?? STAGE_COLORS.default,
-    flagged: flagged ? 1 : 0,
-  },
-});
+    geometry: { type: 'Point' as const, coordinates: p.coordinate },
+    properties: {
+      id: p.id,
+      name: p.name ?? p.id,
+      stage: p.programStage ?? p.kind,
+      stageName: p.programStageName ?? '',
+      teamCode: p.teamCode ?? '',
+      profileId: p.profileId ?? '',
+      trackedEntity: p.trackedEntity ?? '',
+      orgUnitName: p.orgUnitName ?? '',
+      color: flagged ? '#ef4444' : STAGE_COLORS[p.programStage ?? 'default'] ?? STAGE_COLORS.default,
+      flagged: flagged ? 1 : 0,
+      distanceMeters: f.distanceMeters ?? -1,
+    },
+  };
+};
 
 const fmtCoord = (n: number) => n.toFixed(5);
 const escapeHtml = (s: string) =>
@@ -113,6 +139,43 @@ const escapeHtml = (s: string) =>
   );
 const rowHtml = (label: string, value: string) =>
   `<div class="map-popup__row"><span>${escapeHtml(label)}</span><span>${escapeHtml(value)}</span></div>`;
+
+/** What the React point popup needs to render itself. */
+interface PointPopupState {
+  lngLat: [number, number];
+  /** the map feature's own id — identifies the point, not the entity */
+  pointId: string;
+  profileId: string;
+  name: string;
+  stageName: string;
+  teamCode: string;
+  orgUnitName: string;
+  flagged: boolean;
+  distanceMeters?: number;
+  /** pinned popups were opened by a click: they persist and can be closed */
+  pinned: boolean;
+}
+
+/** Read a clicked/hovered feature's properties into popup state. */
+function popupStateFrom(
+  props: Record<string, any>,
+  lngLat: [number, number],
+  pinned: boolean
+): PointPopupState {
+  const distance = Number(props.distanceMeters);
+  return {
+    lngLat,
+    pointId: String(props.id ?? ''),
+    profileId: String(props.profileId ?? ''),
+    name: String(props.name ?? ''),
+    stageName: String(props.stageName ?? ''),
+    teamCode: String(props.teamCode ?? ''),
+    orgUnitName: String(props.orgUnitName ?? ''),
+    flagged: Number(props.flagged) === 1,
+    distanceMeters: Number.isFinite(distance) && distance >= 0 ? distance : undefined,
+    pinned,
+  };
+}
 
 /** Toggle a layer's visibility, no-op if the layer isn't mounted yet. */
 function setLayerVisible(map: maplibregl.Map, layerId: string, visible: boolean) {
@@ -166,12 +229,47 @@ export const Dhis2Map: React.FC<{
   selected?: SelectedOrgUnitLayers | null;
   teamSettlementGeojson?: GeoJSON.FeatureCollection | null;
   orgUnitGeojson?: GeoJSON.FeatureCollection | GeoJSON.Geometry | null;
-}> = ({ microplans, basemap, overlays, loading, selected,selectedTeamCode, teamSettlementGeojson, orgUnitGeojson }) => {
+  /** program whose stages the popup's full profile is read from */
+  program?: string | null;
+  /** profileId -> profile, pivoted from the analytics rows behind the points */
+  profilesById?: Record<string, EntityProfile>;
+}> = ({
+  microplans,
+  basemap,
+  overlays,
+  loading,
+  selected,
+  selectedTeamCode,
+  teamSettlementGeojson,
+  orgUnitGeojson,
+  program,
+  profilesById,
+}) => {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const readyRef = useRef(false);
   const fittedRef = useRef(false);
+
+  // ---- point profile card -------------------------------------------------
+  // Deliberately NOT a maplibre popup. A popup lives inside the map container
+  // and is clipped by it, so a tall profile opened near an edge loses the half
+  // with the data in it. Instead the point's screen position is tracked here
+  // and <MapFloatingCard> renders the card over the page, free to flip to
+  // whichever side has room.
+  const [pointPopup, setPointPopup] = useState<PointPopupState | null>(null);
+  const [anchor, setAnchor] = useState<AnchorPoint | null>(null);
+  // Handlers are registered on the map once, so they must not close over
+  // per-render values — this ref is what they read instead.
+  const interactionRef = useRef({
+    setPointPopup,
+    pinned: false,
+    /** id of the point the open popup belongs to, for hover de-duping */
+    openFor: '',
+  });
+  interactionRef.current.setPointPopup = setPointPopup;
+  interactionRef.current.pinned = pointPopup?.pinned ?? false;
+  interactionRef.current.openFor = pointPopup ? pointPopup.pointId : '';
 
   const ov: OverlayToggles =
     overlays ?? {
@@ -222,6 +320,9 @@ export const Dhis2Map: React.FC<{
         ),
       });
       if (hit.length) return;
+      // clicking the bare map dismisses a pinned profile rather than leaving
+      // two popups fighting for the same corner of the screen
+      interactionRef.current.setPointPopup(null);
       openPopup(
         map,
         `<div class="map-popup__title">Coordinate</div>` +
@@ -246,6 +347,42 @@ export const Dhis2Map: React.FC<{
       .addTo(map);
   }, []);
 
+  // ---- keep the floating profile card pinned to its point -----------------
+  // The card is positioned in viewport coordinates, so it has to be recomputed
+  // whenever the point moves under it: panning and zooming the map, resizing
+  // it, or scrolling the page the map sits on.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !pointPopup) {
+      setAnchor(null);
+      return;
+    }
+
+    const update = () => {
+      const projected = map.project(pointPopup.lngLat);
+      const rect = map.getContainer().getBoundingClientRect();
+      setAnchor({ x: rect.left + projected.x, y: rect.top + projected.y });
+    };
+    update();
+
+    map.on('move', update);
+    map.on('resize', update);
+    // capture phase: the scroll may happen on any ancestor, not just window
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      map.off('move', update);
+      map.off('resize', update);
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [pointPopup]);
+
+  // a pinned profile and the coordinate popup are mutually exclusive
+  useEffect(() => {
+    if (pointPopup?.pinned) popupRef.current?.remove();
+  }, [pointPopup?.pinned]);
+
   // ---- basemap swap (rebuild style, then re-add overlays) ------------------
   useEffect(() => {
     const map = mapRef.current;
@@ -265,6 +402,69 @@ export const Dhis2Map: React.FC<{
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basemap]);
 
+  /**
+   * Bind hover/click behaviour to a point layer + its cluster layer.
+   * Registered once per layer for the life of the map (see `boundLayersRef`),
+   * because a style swap re-adds the layers but keeps the map's listeners.
+   */
+  const boundLayersRef = useRef<Set<string>>(new Set());
+  const bindPointInteractions = useCallback(
+    (map: maplibregl.Map, pointLayer: string, clusterLayer: string, sourceId: string) => {
+      if (boundLayersRef.current.has(pointLayer)) return;
+      boundLayersRef.current.add(pointLayer);
+
+      // zoom into a cluster on click (smooth easeTo)
+      map.on('click', clusterLayer, (e) => {
+        const f = map.queryRenderedFeatures(e.point, { layers: [clusterLayer] })[0];
+        const clusterId = f?.properties?.cluster_id;
+        const src = map.getSource(sourceId) as maplibregl.GeoJSONSource;
+        if (clusterId == null || !src) return;
+        src.getClusterExpansionZoom(clusterId).then((zoom) => {
+          map.easeTo({ center: (f.geometry as any).coordinates, zoom: zoom + 0.2, duration: 500 });
+        });
+      });
+
+      map.on('click', pointLayer, (e) => {
+        const props = e.features?.[0]?.properties as any;
+        if (!props) return;
+        e.originalEvent?.stopPropagation();
+        const state = popupStateFrom(props, [e.lngLat.lng, e.lngLat.lat], true);
+        // clicking the point whose profile is already pinned closes it, so the
+        // same gesture that opened the card also puts it away
+        const { pinned, openFor } = interactionRef.current;
+        interactionRef.current.setPointPopup(
+          pinned && openFor === state.pointId ? null : state
+        );
+      });
+
+      // Hover opens the same card in preview form — but never on top of a
+      // profile the user has deliberately pinned.
+      map.on('mousemove', pointLayer, (e) => {
+        if (interactionRef.current.pinned) return;
+        const props = e.features?.[0]?.properties as any;
+        if (!props) return;
+        // mousemove fires continuously while the cursor sits on a point;
+        // re-rendering the card for each pixel of travel is pure waste
+        if (interactionRef.current.openFor === String(props.id ?? '')) return;
+        const geometry = e.features?.[0]?.geometry as GeoJSON.Point | undefined;
+        const at: [number, number] = geometry?.coordinates
+          ? [geometry.coordinates[0], geometry.coordinates[1]]
+          : [e.lngLat.lng, e.lngLat.lat];
+        interactionRef.current.setPointPopup(popupStateFrom(props, at, false));
+      });
+      map.on('mouseleave', pointLayer, () => {
+        if (interactionRef.current.pinned) return;
+        interactionRef.current.setPointPopup(null);
+      });
+
+      for (const id of [clusterLayer, pointLayer]) {
+        map.on('mouseenter', id, () => (map.getCanvas().style.cursor = 'pointer'));
+        map.on('mouseleave', id, () => (map.getCanvas().style.cursor = ''));
+      }
+    },
+    []
+  );
+
   // ---- mount/update overlay sources + layers ------------------------------
   const mountOverlays = useCallback(() => {
     const map = mapRef.current;
@@ -275,8 +475,8 @@ export const Dhis2Map: React.FC<{
     
     for (const mp of microplans) {
       for (const f of mp.flags) {
-        if (f.inside) pointFeatures.push(pointFeature(f.point, false));
-        else flaggedFeatures.push(pointFeature(f.point, true));
+        if (f.inside) pointFeatures.push(pointFeature(f));
+        else flaggedFeatures.push(pointFeature(f));
       }
     }
 
@@ -336,36 +536,10 @@ export const Dhis2Map: React.FC<{
           'circle-stroke-color': '#ffffff',
         },
       });
-      // zoom into a cluster on click (smooth easeTo)
-      map.on('click', LYR.clusters, (e) => {
-        const f = map.queryRenderedFeatures(e.point, { layers: [LYR.clusters] })[0];
-        const clusterId = f?.properties?.cluster_id;
-        const src = map.getSource(SRC.points) as maplibregl.GeoJSONSource;
-        if (clusterId == null || !src) return;
-        src.getClusterExpansionZoom(clusterId).then((zoom) => {
-          map.easeTo({ center: (f.geometry as any).coordinates, zoom: zoom + 0.2, duration: 500 });
-        });
-      });
-      map.on('click', LYR.point, (e) => {
-        const p = e.features?.[0]?.properties as any;
-        if (!p) return;
-        openPopup(
-          map,
-          `<div class="map-popup__title">${escapeHtml(String(p.name))}</div>` +
-            rowHtml('Vaccination Stage: ', String(p.stageName || p.stage)) +
-            (p.teamCode || selectedTeamCode ? rowHtml('Team', String(p.teamCode || selectedTeamCode)) : '') +
-            `<div class="map-popup__coord">${fmtCoord(e.lngLat.lat)}, ${fmtCoord(e.lngLat.lng)}</div>`,
-          [e.lngLat.lng, e.lngLat.lat]
-        );
-      });
-      for (const id of [LYR.clusters, LYR.point]) {
-        map.on('mouseenter', id, () => (map.getCanvas().style.cursor = 'pointer'));
-        map.on('mouseleave', id, () => (map.getCanvas().style.cursor = ''));
-      }
     }
+    bindPointInteractions(map, LYR.point, LYR.clusters, SRC.points);
 
-    
-    // clustered in-bounds points
+    // clustered out-of-bounds points
     if (!map.getLayer(LYR.flaggedClusters)) {
       map.addLayer({
         id: LYR.flaggedClusters,
@@ -402,36 +576,8 @@ export const Dhis2Map: React.FC<{
           'circle-stroke-color': '#ffffff',
         },
       });
-      // zoom into a cluster on click (smooth easeTo)
-      map.on('click', LYR.flaggedClusters, (e) => {
-        const f = map.queryRenderedFeatures(e.point, { layers: [LYR.flaggedClusters] })[0];
-        const clusterId = f?.properties?.cluster_id;
-        const src = map.getSource(SRC.flagged) as maplibregl.GeoJSONSource;
-        if (clusterId == null || !src) return;
-        src.getClusterExpansionZoom(clusterId).then((zoom) => {
-          map.easeTo({ center: (f.geometry as any).coordinates, zoom: zoom + 0.2, duration: 500 });
-        });
-      });
-      map.on('click', LYR.flagged, (e) => {
-        const p = e.features?.[0]?.properties as any;
-        if (!p) return;
-        openPopup(
-          map,
-          `<div class="map-popup__title">${escapeHtml(String(p.name))}</div>` +
-            rowHtml('Vaccination Stage: ', String(p.stageName || p.stage)) +
-            (selectedTeamCode || p.teamCode ? rowHtml('Team', String(selectedTeamCode || p.teamCode)) : '') +
-            (p.wardname || p.ward ? rowHtml('Ward', String(p.ward ?? p.wardname)) : '') +
-            (p.lganame || p.lga ? rowHtml('LGA', String(p.lga ?? p.lganame)) : '') +
-            (p.statename || p.state ? rowHtml('State', String(p.state ?? p.statename)) : '')+ 
-             `<div class="map-popup__coord">${fmtCoord(e.lngLat.lat)}, ${fmtCoord(e.lngLat.lng)}</div>`,
-          [e.lngLat.lng, e.lngLat.lat]
-        );
-      });
-      for (const id of [LYR.flaggedClusters, LYR.flagged]) {
-        map.on('mouseenter', id, () => (map.getCanvas().style.cursor = 'pointer'));
-        map.on('mouseleave', id, () => (map.getCanvas().style.cursor = ''));
-      }
     }
+    bindPointInteractions(map, LYR.flagged, LYR.flaggedClusters, SRC.flagged);
 
     for (const l of [LYR.clusters, LYR.clusterCount, LYR.point]) {
       setLayerVisible(map, l, ov.points);
@@ -461,8 +607,7 @@ export const Dhis2Map: React.FC<{
     microplans, 
     ov.points, 
     ov.flagged,
-    selectedTeamCode, 
-    openPopup
+    bindPointInteractions,
   ]);
 
   // re-mount overlays whenever data/toggles change (guarded by style load)
@@ -477,13 +622,6 @@ export const Dhis2Map: React.FC<{
     const map = mapRef.current;
     if (!map) return;
 
-    // Step 1 — GRID3 settlement extents as boundary-line polygons
-    /*const grid3Features: GeoJSON.Feature[] = (selected?.grid3 ?? []).map((s) => ({
-      type: 'Feature',
-      id: s.id,
-      geometry: s.geometry,
-      properties: { id: s.id, extentType: s.extentType, areaSqm: s.areaSqm },
-    }));*/
     const grid3Features: GeoJSON.Feature[] | any = selected?.grid3 ?? [];
 
     upsertGeoJson(map, SRC.grid3, grid3Features);
@@ -628,62 +766,84 @@ export const Dhis2Map: React.FC<{
   }, [mountTeamGeoservice, whenReady]);
 
   const mountOrgUnitBoundary = useCallback(() => {
-  const map = mapRef.current;
-  if (!map) return;
-  const fc: GeoJSON.FeatureCollection =
-    orgUnitGeojson ? { 
-      type: 'FeatureCollection', 
-      features: [{
-        "type": "Feature",
-        geometry: orgUnitGeojson
-     }]
-    }: { type: 'FeatureCollection', features: []};
-  upsertGeoJson(map, SRC.orgUnit, fc.features);
+    const map = mapRef.current;
+    if (!map) return;
+    const features: GeoJSON.Feature[] = orgUnitGeojson
+      ? [
+          {
+            type: 'Feature',
+            geometry: orgUnitGeojson as GeoJSON.Geometry,
+            properties: {},
+          },
+        ]
+      : [];
+    upsertGeoJson(map, SRC.orgUnit, features);
 
-  if (!map.getLayer(LYR.orgUnitLine)) {
-    // insert the fill BELOW existing settlement fills so it acts as a
-    // backdrop, not a mask — beforeId is the first settlement layer if mounted
-    const beforeId = map.getLayer(LYR.settlementFill) ? LYR.settlementFill : undefined;
-    map.addLayer(
-      {
-        id: LYR.orgUnitFill,
-        type: 'fill',
+    if (!map.getLayer(LYR.orgUnitLine)) {
+      // insert the fill BELOW existing settlement fills so it acts as a
+      // backdrop, not a mask — beforeId is the first settlement layer if mounted
+      const beforeId = map.getLayer(LYR.settlementFill) ? LYR.settlementFill : undefined;
+      map.addLayer(
+        {
+          id: LYR.orgUnitFill,
+          type: 'fill',
+          source: SRC.orgUnit,
+          paint: { 'fill-color': '#264b88', 'fill-opacity': 0.04 },
+        },
+        beforeId
+      );
+      map.addLayer({
+        id: LYR.orgUnitLine,
+        type: 'line',
         source: SRC.orgUnit,
-        paint: { 'fill-color': '#264b88', 'fill-opacity': 0.04 },
-      },
-      beforeId
-    );
-    map.addLayer({
-      id: LYR.orgUnitLine,
-      type: 'line',
-      source: SRC.orgUnit,
-      paint: {
-        'line-color': '#264b88',
-        'line-width': 2
-      },
-    });
-  }
+        paint: {
+          'line-color': '#264b88',
+          'line-width': 2
+        },
+      });
+    }
 
-  // reuse the boundaries toggle (or add a dedicated one to OverlayToggles)
-  for (const l of [LYR.orgUnitFill, LYR.orgUnitLine]) {
-    setLayerVisible(map, l, ov.boundaries);
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [orgUnitGeojson, ov.boundaries]);
+    // reuse the boundaries toggle (or add a dedicated one to OverlayToggles)
+    for (const l of [LYR.orgUnitFill, LYR.orgUnitLine]) {
+      setLayerVisible(map, l, ov.boundaries);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgUnitGeojson, ov.boundaries]);
 
-useEffect(() => {
-  const map = mapRef.current;
-  if (!map) return;
-  whenReady(map, mountOrgUnitBoundary);
-}, [mountOrgUnitBoundary, whenReady]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    whenReady(map, mountOrgUnitBoundary);
+  }, [mountOrgUnitBoundary, whenReady]);
+
+  const profile = useMemo(
+    () => (pointPopup?.profileId ? profilesById?.[pointPopup.profileId] : undefined),
+    [pointPopup?.profileId, profilesById]
+  );
 
   return (
-    <div className="mapview-wrap" style={{ position: 'relative', height: '70vh', width: '100%' }}>
-      <div ref={ref} className="mapview" style={{ height: '100%', width: '100%' }} />
+    <div className="relative h-full w-full">
+      <div ref={ref} className="h-full w-full" />
       {loading && (
         <div className="map-mask">
           <div className="map-mask__spinner" />
         </div>
+      )}
+      {pointPopup && (
+        <MapFloatingCard anchor={anchor} interactive={pointPopup.pinned}>
+          <TrackedEntityProfileCard
+            profile={profile}
+            programId={program}
+            flagged={pointPopup.flagged}
+            pointLabel={pointPopup.name}
+            stageName={pointPopup.stageName || undefined}
+            teamCode={pointPopup.teamCode || selectedTeamCode || null}
+            coordinate={pointPopup.lngLat}
+            distanceMeters={pointPopup.distanceMeters}
+            compact={!pointPopup.pinned}
+            onClose={pointPopup.pinned ? () => setPointPopup(null) : undefined}
+          />
+        </MapFloatingCard>
       )}
     </div>
   );

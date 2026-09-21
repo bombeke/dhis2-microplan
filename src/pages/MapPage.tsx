@@ -19,6 +19,8 @@ import { useOrgUnitPaths } from '../hooks/useOrgUnits';
 import { useSelectedOrgUnitLayers } from '../hooks/useSelectedOrgUnitLayers';
 import { useSettlementGeoservice } from '../hooks/useSettlementGeoservice';
 import { useUsers } from '../hooks/useUsers';
+import { useIsNarrow } from '../hooks/useIsNarrow';
+import { cn } from '../lib/ui';
 
 /**
  * Map page. The catalogue is filtered (user/period/level/org unit); the
@@ -33,6 +35,9 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
   const { mapFilters, activeMicroplanIds, setActiveMicroplanIds, basemapId, overlays,
     hiddenCoordinateDims, selectedDimensions, hiddenWeeks, toggleWeek } = useStore();
   const { data: accessibleUsers = [] } = useUsers();
+  // Phone-sized screens get the layer cards collapsed: open, they would cover
+  // most of the map they exist to control.
+  const isNarrow = useIsNarrow();
 
   // The program the map draws events for comes from the FilterMap program
   // field; fall back to any program passed in by the shell.
@@ -190,59 +195,132 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
  
   const loading = planQueries.some((q) => q.isLoading) || selectedFetching;
 
+  const flaggedCount = useMemo(
+    () => microplans.reduce((n, m) => n + m.flags.filter((f) => !f.inside).length, 0),
+    [microplans]
+  );
+
+  // The numbers that answer "is this map worth acting on?" — above the map
+  // rather than floating inside it, where they fought the scale bar and were
+  // covered by the data sheet the moment anyone opened it.
+  const stats: { label: string; value: string; tone?: 'flag' | 'accent' }[] = useMemo(() => {
+    const out: { label: string; value: string; tone?: 'flag' | 'accent' }[] = [];
+    out.push({ label: 'Microplans', value: String(microplans.length) });
+    out.push({
+      label: 'Flagged visits',
+      value: flaggedCount.toLocaleString(),
+      tone: flaggedCount > 0 ? 'flag' : undefined,
+    });
+    if (selectedLayers) {
+      out.push({
+        label: 'Visits recorded',
+        value: selectedLayers.eventPoints.length.toLocaleString(),
+        tone: 'accent',
+      });
+      out.push({
+        label: 'Settlements',
+        value: `${selectedLayers.grid3.length.toLocaleString()}${
+          selectedLayers.grid3Truncated ? '+' : ''
+        }`,
+      });
+    }
+    if (selectedTeamCode && teamSettlementGeojson.features.length > 0) {
+      out.push({
+        label: `Visited by ${selectedTeamCode}`,
+        value: teamSettlementGeojson.features.length.toLocaleString(),
+      });
+    }
+    return out;
+  }, [microplans, flaggedCount, selectedLayers, selectedTeamCode, teamSettlementGeojson]);
+
+  const showStats = !!mapFilters.programId && !!mapFilters.orgUnitId;
+
   return (
-    <div className="page page--map">
+    <div className="flex flex-col gap-3 p-3 sm:p-4 lg:p-5">
       <MapFilterBar index={index} />
-      <div className="mapwrap">
+
+      {showStats && (
+        /* Scrolls sideways on a phone instead of wrapping into four rows that
+           would push the map itself below the fold. */
+        <div
+          className="-mx-3 flex items-stretch gap-2 overflow-x-auto px-3 pb-0.5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0"
+          role="group"
+          aria-label="Map summary"
+        >
+          {stats.map((s) => (
+            <div
+              key={s.label}
+              className={cn(
+                'flex min-w-[6.75rem] shrink-0 flex-col gap-px rounded-lg border border-line border-s-[3px] bg-panel px-3 py-2 shadow-card sm:shrink',
+                s.tone === 'flag' && 'border-s-flag',
+                s.tone === 'accent' && 'border-s-accent',
+                !s.tone && 'border-s-line'
+              )}
+            >
+              <span
+                className={cn(
+                  'text-lg font-semibold leading-none tabular-nums tracking-tight',
+                  s.tone === 'flag' && 'text-flag'
+                )}
+              >
+                {s.value}
+              </span>
+              <span className="text-[11px] text-muted">{s.label}</span>
+            </div>
+          ))}
+          {loading && (
+            <span className="self-center whitespace-nowrap px-1 text-xs italic text-muted">
+              Loading map layers…
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* The map takes the height the chrome doesn't, clamped at both ends:
+          never so short that clusters overlap the legend on a laptop, never so
+          tall that the data sheet has nowhere to open on a large monitor. */}
+      <div className="relative h-[clamp(22rem,calc(100vh-24rem),60rem)] overflow-hidden rounded-xl border border-line sm:h-[clamp(26rem,calc(100vh-22rem),60rem)]">
         <Dhis2Map
           microplans={microplans}
           basemap={getBasemap(basemapId)}
           overlays={overlays}
           loading={loading}
-          selectedTeamCode={ selectedTeamCode }
+          selectedTeamCode={selectedTeamCode}
           selected={visibleSelected}
           teamSettlementGeojson={teamSettlementGeojson}
           orgUnitGeojson={selectedLayers?.geometry ?? null}
+          program={program ?? null}
+          profilesById={selectedLayers?.profilesById}
         />
-        <div className="map-controls">
-          <LayerControl />
+
+        {/* Layer cards: collapsed by default on phones, where an open card
+            would cover most of the map it is meant to control. */}
+        <div className="absolute right-3 top-3 z-10 flex max-h-[calc(100%-1.5rem)] w-[13rem] flex-col gap-2 overflow-y-auto sm:w-[16.5rem]">
+          <LayerControl defaultOpen={!isNarrow} />
           {selectedLayers && selectedLayers.coordinateDimensionIds.length > 0 && (
             <CoordinateLayerControl
               dimensionIds={selectedLayers.coordinateDimensionIds}
               metaItems={selectedLayers.coordinateMetaItems}
               countsByDim={coordCounts}
+              defaultOpen={!isNarrow}
             />
           )}
         </div>
-        {loading && <div className="mapwrap__loading">Loading map layers…</div>}
-        <div className="mapwrap__legend">
-          <strong>{microplans.length}</strong> microplan(s) ·{' '}
-          {microplans.reduce((n, m) => n + m.flags.filter((f) => !f.inside).length, 0)} flagged
-          {selectedLayers && (
-            <>
-              {' '}· <strong>{selectedLayers.grid3.length}</strong> Settlements
-              {selectedLayers.grid3Truncated ? '+' : ''} ·{' '}
-              <strong>{selectedLayers.eventPoints.length}</strong> Children vaccinated
-            </>
-          )}
-          {selectedTeamCode && teamSettlementGeojson.features.length > 0 && (
-            <>
-              {' '}· <strong>{teamSettlementGeojson.features.length}</strong> Settlements visited by { selectedTeamCode }        
-            </>
-          )}
-        </div>
+
         {teamWeekSettlements && teamWeekSettlements.length > 0 && (
-          <div className="mapwrap__weeks">
-            <span className="mapwrap__weeks-title">Outreach weeks</span>
+          <div className="absolute bottom-3 left-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg border border-line bg-panel/92 px-2.5 py-1.5 shadow-card backdrop-blur-sm">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+              Outreach weeks
+            </span>
             {teamWeekSettlements.map((ws) => (
-              <label key={ws.week} className="weekchip">
+              <label key={ws.week} className="inline-flex cursor-pointer items-center gap-1 text-xs">
                 <Checkbox
                   dense
                   checked={!hiddenWeeks.includes(ws.week)}
                   onChange={() => toggleWeek(ws.week)}
                 />
                 <span
-                  className="weekchip__dot"
+                  className="inline-block size-2.5 rounded-sm"
                   style={{ background: WEEK_LEGEND_COLORS[ws.week] ?? '#f59e0b' }}
                 />
                 W{ws.week} ({ws.settlements.length})
@@ -250,12 +328,13 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
             ))}
           </div>
         )}
+
         <AnalyticsDataPanel
           program={program}
           orgUnitId={mapFilters.orgUnitId}
           period={mapFilters.period}
           userFilter={userFilter}
-          tableResult={ selectedLayers?.tableResult}
+          tableResult={selectedLayers?.tableResult}
         />
       </div>
     </div>

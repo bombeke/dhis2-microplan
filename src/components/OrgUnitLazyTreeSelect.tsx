@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   useOrgUnitRoots,
   useOrgUnitChildren,
@@ -6,6 +6,18 @@ import {
   useOrgUnitsByIds,
   type OrgUnitNode,
 } from '../hooks/useOrgUnits';
+import {
+  cn,
+  selectCaret,
+  selectEmpty,
+  selectOption,
+  selectOptionActive,
+  selectPanel,
+  selectPlaceholder,
+  selectSearch,
+  selectTrigger,
+  selectValue,
+} from '../lib/ui';
 
 /**
  * Lazy org-unit hierarchy picker.
@@ -73,51 +85,61 @@ export const OrgUnitLazyTreeSelect: React.FC<{
   };
 
   return (
-    <div className="outree" ref={boxRef}>
-      <button className="ssel__trigger" onClick={() => setOpen((o) => !o)}>
-        <span className={value ? '' : 'ssel__placeholder'}>{selectedName}</span>
-        <span className="ssel__caret">▾</span>
+    <div className="relative w-full sm:w-auto" ref={boxRef}>
+      <button
+        type="button"
+        className={selectTrigger}
+        aria-expanded={open}
+        title={selectedName}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className={value ? selectValue : selectPlaceholder}>{selectedName}</span>
+        <span className={selectCaret}>▾</span>
       </button>
 
       {open && (
-        <div className="outree__panel">
+        <div className={cn(selectPanel, 'w-[min(22rem,calc(100vw-2rem))]')}>
           <input
             autoFocus
-            className="ssel__input"
+            className={selectSearch}
             placeholder="Search org units…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
 
-          <div className="outree__body">
+          <div className="max-h-[21rem] overflow-y-auto overscroll-contain p-1">
             <div
-              className={`outree__all ${!value ? 'is-active' : ''}`}
+              className={cn(selectOption, !value && selectOptionActive)}
               onClick={() => choose(null)}
             >
               All org units
             </div>
 
             {debounced.length >= 2 ? (
-              <ul className="outree__results">
-                {searching && <li className="ssel__empty">Searching…</li>}
+              <ul>
+                {searching && <li className={selectEmpty}>Searching…</li>}
                 {!searching &&
                   searchHits.map((h) => (
                     <li
                       key={h.id}
-                      className={value === h.id ? 'is-active' : ''}
+                      className={cn(
+                        selectOption,
+                        'flex-row items-baseline justify-between gap-2',
+                        value === h.id && selectOptionActive
+                      )}
                       onClick={() => jumpTo(h)}
                     >
-                      <span>{h.name}</span>
-                      <small>level {h.level}</small>
+                      <span className="truncate">{h.name}</span>
+                      <small className="shrink-0 text-[11px] text-muted">level {h.level}</small>
                     </li>
                   ))}
                 {!searching && searchHits.length === 0 && (
-                  <li className="ssel__empty">No matches</li>
+                  <li className={selectEmpty}>No matches</li>
                 )}
               </ul>
             ) : (
-              <div className="outree__tree">
-                {rootsLoading && <div className="ssel__empty">Loading…</div>}
+              <div>
+                {rootsLoading && <div className={selectEmpty}>Loading…</div>}
                 {roots.map((n) => (
                   <LazyBranch
                     key={n.id}
@@ -153,26 +175,42 @@ const LazyBranch: React.FC<{
   const { data: children = [], isFetching } = useOrgUnitChildren(node.id, isOpen && hasChildren);
 
   return (
-    <div className="outree__branch" style={{ paddingLeft: depth * 12 }}>
-      <div className="outree__row">
+    <div style={{ paddingInlineStart: depth * 12 }}>
+      <div className="flex items-center gap-0.5">
         {hasChildren ? (
-          <button className="outree__toggle" onClick={() => onToggle(node.id)}>
+          <button
+            type="button"
+            className="w-[18px] shrink-0 p-0.5 text-[11px] text-muted"
+            aria-label={isOpen ? 'Collapse' : 'Expand'}
+            onClick={() => onToggle(node.id)}
+          >
             {isOpen ? '▾' : '▸'}
           </button>
         ) : (
-          <span className="outree__spacer" />
+          <span className="inline-block w-[18px] shrink-0" />
         )}
         <button
-          className={`outree__name ${value === node.id ? 'is-selected' : ''}`}
+          type="button"
+          className={cn(
+            'flex flex-1 items-baseline gap-1.5 rounded-md px-1.5 py-1 text-left text-[13px] text-ink hover:bg-panel2',
+            value === node.id && 'bg-accent/15 text-accent'
+          )}
           onClick={() => onChoose(node.id)}
         >
-          {node.displayName}
-          <small>L{node.level}</small>
+          <span className="truncate">{node.displayName}</span>
+          <small className="shrink-0 text-[10px] text-faint">L{node.level}</small>
         </button>
       </div>
       {isOpen && (
         <>
-          {isFetching && <div className="outree__loading" style={{ paddingLeft: (depth + 1) * 12 }}>Loading…</div>}
+          {isFetching && (
+            <div
+              className="py-1 text-xs italic text-muted"
+              style={{ paddingInlineStart: (depth + 1) * 12 }}
+            >
+              Loading…
+            </div>
+          )}
           {children.map((c) => (
             <LazyBranch
               key={c.id}

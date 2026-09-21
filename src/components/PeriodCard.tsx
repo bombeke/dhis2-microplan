@@ -27,7 +27,7 @@ export const PeriodCard: React.FC<{ value: string; onChange: (id: string) => voi
               key={p.id}
               className={p.id === value ? 'is-active' : ''}
               onClick={() => {
-                onChange(p.id);
+                if (p.id) onChange(p.id);
                 setOpen(false);
               }}
             >

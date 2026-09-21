@@ -1,5 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useFlexFilter, type SearchOption } from '../hooks/useFlexFilter';
+import {
+  cn,
+  selectCaret,
+  selectEmpty,
+  selectList,
+  selectOption,
+  selectOptionActive,
+  selectPanel,
+  selectPlaceholder,
+  selectSearch,
+  selectTrigger,
+  selectValue,
+} from '../lib/ui';
 
 /**
  * A combobox whose options are searched through an in-memory FlexSearch index
@@ -35,23 +48,30 @@ export const SearchableSelect: React.FC<{
   }, []);
 
   return (
-    <div className="ssel" ref={boxRef}>
-      <button className="ssel__trigger" onClick={() => setOpen((o) => !o)}>
-        <span className={value ? '' : 'ssel__placeholder'}>{selectedLabel}</span>
-        <span className="ssel__caret">▾</span>
+    <div className="relative w-full sm:w-auto" ref={boxRef}>
+      <button
+        type="button"
+        className={selectTrigger}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        title={selectedLabel}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className={value ? selectValue : selectPlaceholder}>{selectedLabel}</span>
+        <span className={selectCaret}>▾</span>
       </button>
       {open && (
-        <div className="ssel__panel">
+        <div className={selectPanel}>
           <input
             autoFocus
-            className="ssel__input"
+            className={selectSearch}
             placeholder={placeholder}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <ul className="ssel__list">
+          <ul className={selectList} role="listbox">
             <li
-              className={`ssel__opt ${!value ? 'is-active' : ''}`}
+              className={cn(selectOption, !value && selectOptionActive)}
               onClick={() => {
                 onChange(null);
                 setOpen(false);
@@ -63,7 +83,7 @@ export const SearchableSelect: React.FC<{
             {results.map((o) => (
               <li
                 key={o.id}
-                className={`ssel__opt ${value === o.id ? 'is-active' : ''}`}
+                className={cn(selectOption, value === o.id && selectOptionActive)}
                 onClick={() => {
                   onChange(o.id);
                   setOpen(false);
@@ -71,16 +91,16 @@ export const SearchableSelect: React.FC<{
                 }}
               >
                 {bracketSublabel ? (
-                  <span>{fmt(o)}</span>
+                  <span className="truncate">{fmt(o)}</span>
                 ) : (
                   <>
-                    <span>{o.label}</span>
-                    {o.sublabel && <small>{o.sublabel}</small>}
+                    <span className="truncate">{o.label}</span>
+                    {o.sublabel && <small className="truncate text-[11px] text-muted">{o.sublabel}</small>}
                   </>
                 )}
               </li>
             ))}
-            {results.length === 0 && <li className="ssel__empty">No matches</li>}
+            {results.length === 0 && <li className={selectEmpty}>No matches</li>}
           </ul>
         </div>
       )}

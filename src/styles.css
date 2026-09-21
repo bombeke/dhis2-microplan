@@ -1,22 +1,56 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   Design tokens.
+
+   These live in Tailwind's `@theme` so the palette is reachable as utilities
+   (`bg-panel`, `text-muted`, `border-line`, `shadow-float`) rather than only as
+   raw custom properties. Tailwind v4 emits every `@theme` entry as a `:root`
+   custom property too, so the older hand-written CSS further down keeps working
+   off the same values — there is one palette, not two drifting copies.
+   ========================================================================== */
+@theme {
+  --color-canvas: #f6f8fa;
+  --color-panel: #ffffff;
+  --color-panel2: #f0f3f6;
+  --color-line: #e3e8ee;
+  --color-ink: #1a2230;
+  --color-muted: #5d6b7a;
+  --color-faint: #8a97a6;
+  --color-accent: #0d9488;
+  --color-accent-ink: #ffffff;
+  --color-flag: #e23d3d;
+
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, .04), 0 2px 8px rgba(16, 24, 40, .05);
+  --shadow-float: 0 12px 32px rgba(16, 24, 40, .10), 0 2px 8px rgba(16, 24, 40, .06);
+  --shadow-sheet: 0 -8px 40px rgba(16, 24, 40, .16), 0 -2px 8px rgba(16, 24, 40, .06);
+
+  /* The app bar's height, needed by the sticky nav and by anything that has to
+     sit clear of both. A token because three rules depend on the same number. */
+  --spacing-bar: 58px;
+}
+
+/* Legacy aliases: the pre-Tailwind stylesheet below refers to these names.
+   They are pointers, not copies, so the two never disagree. */
 :root {
-  --bg: #f6f8fa; --panel: #ffffff; --panel2: #f0f3f6; --line: #e3e8ee;
-  --ink: #1a2230; --muted: #5d6b7a; --faint: #8a97a6;
-  --accent: #0d9488; --accent-ink: #ffffff; --flag: #e23d3d;
-  --shadow: 0 1px 3px rgba(16,24,40,.06), 0 1px 2px rgba(16,24,40,.04);
-  --shadow-lg: 0 10px 30px rgba(16,24,40,.12);
+  --bg: var(--color-canvas);
+  --panel: var(--color-panel);
+  --panel2: var(--color-panel2);
+  --line: var(--color-line);
+  --ink: var(--color-ink);
+  --muted: var(--color-muted);
+  --faint: var(--color-faint);
+  --accent: var(--color-accent);
+  --accent-ink: var(--color-accent-ink);
+  --flag: var(--color-flag);
+  --shadow: var(--shadow-card);
+  --shadow-lg: var(--shadow-float);
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink);
   font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased; }
-.app-shell__bar { display: flex; align-items: center; gap: 16px;
-  padding: 10px 24px; background: var(--panel); border-bottom: 1px solid var(--line); }
-.app-shell__bar h1 { font-size: 15px; margin: 0; letter-spacing: .2px; font-weight: 650; }
-.app-shell__body { display: grid; grid-template-columns: 360px 1fr; height: calc(100vh - 53px); }
-.app-shell__side { border-right: 1px solid var(--line); overflow: auto; padding: 16px; }
-.app-shell__main { overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+
 .upload { border: 1.5px dashed var(--line); border-radius: 12px; padding: 22px;
   display: flex; flex-direction: column; gap: 6px; cursor: pointer; transition: border-color .15s; }
 .upload:hover { border-color: var(--accent); }
@@ -43,16 +77,6 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 .flagtable__badge { background: var(--flag); color: #fff; border-radius: 6px; padding: 2px 6px; font-size: 11px; }
 
 /* ---- routing shell + nav ------------------------------------------------- */
-.app-shell__spacer { flex: 1; }
-.app-shell__user { display: inline-flex; align-items: center; gap: 8px;
-  color: var(--ink); font-size: 13px; font-weight: 500; white-space: nowrap; }
-.app-shell__page { min-height: 0; overflow: auto; background: var(--bg); }
-.app-shell__page--center { display: grid; place-items: center; padding: 48px; }
-.nav { display: flex; gap: 4px; }
-.nav__link { background: transparent; border: 1px solid transparent; color: var(--muted);
-  border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
-.nav__link:hover { color: var(--ink); }
-.nav__link.is-active { color: var(--ink); background: var(--panel2); border-color: var(--line); }
 
 /* ---- generic page -------------------------------------------------------- */
 .page { padding: 20px 24px; max-width: 1200px; margin: 0 auto; }
@@ -103,75 +127,23 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 .oubranch__name.is-selected { background: rgba(43,181,160,.18); color: var(--accent); }
 
 /* ---- map page + filter bar ----------------------------------------------- */
-.page--map { max-width: none; padding: 16px; }
-.filterbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-.filterbar__label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
-.filterbar select { background: var(--bg); border: 1px solid var(--line); color: var(--ink);
-  border-radius: 8px; padding: 6px 10px; font-size: 13px; }
-.filterbar__reset { background: none; border: 1px solid var(--line); color: var(--muted);
-  border-radius: 8px; padding: 6px 10px; cursor: pointer; }
-.mapwrap { position: relative; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-.mapwrap__loading { position: absolute; top: 12px; left: 12px; background: rgba(255,255,255,.92); backdrop-filter: blur(6px);
-  border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 12px; }
-.mapwrap__legend { position: absolute; bottom: 12px; left: 12px; background: rgba(255,255,255,.92); backdrop-filter: blur(6px);
-  border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 12px; }
 
 /* ---- layer control (basemap + overlays), DHIS2 Maps-style --------------- */
-.map-controls { position: absolute; top: 12px; right: 12px; z-index: 5;
-  display: flex; flex-direction: column; gap: 10px; width: 264px;
-  max-height: calc(100% - 24px); overflow: hidden auto; }
-.layerctl { background: rgba(255,255,255,.97); backdrop-filter: blur(6px);
-  border: 1px solid var(--line); border-radius: 10px;
-  overflow: hidden; box-shadow: var(--shadow-lg); flex: none; }
-.layerctl__handle { display: flex; align-items: center; gap: 8px; width: 100%;
-  background: var(--panel2); border: none; color: var(--ink); cursor: pointer;
-  padding: 8px 12px; font-size: 13px; font-weight: 600; }
-.layerctl__icon { font-size: 14px; }
-.layerctl__body { padding: 12px; }
-.layerctl__section + .layerctl__section { margin-top: 14px; padding-top: 12px;
-  border-top: 1px solid var(--line); }
-.layerctl__title { font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
-  color: var(--muted); margin-bottom: 8px; }
-.layerctl__basemaps { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.basemap { display: flex; align-items: center; gap: 7px; background: var(--bg);
-  border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; cursor: pointer;
-  color: var(--ink); font-size: 11.5px; text-align: left; }
-.basemap.is-active { border-color: var(--accent); background: rgba(43,181,160,.12); }
-.basemap__swatch { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(16,24,40,.12);
-  flex: none; }
-.basemap__name { line-height: 1.1; }
-.layerctl__toggle { display: flex; align-items: center; gap: 10px;
-  padding: 7px 8px; margin: 0 -8px; border-radius: 8px;
-  font-size: 13px; cursor: pointer; transition: background .15s ease; }
-.layerctl__toggle:hover { background: var(--panel2); }
-.layerctl__toggle > span { flex: 1; user-select: none; }
+
 /* modern switch: hide the native box, render a sliding pill */
-.layerctl__toggle input { appearance: none; -webkit-appearance: none;
-  position: relative; flex: none; width: 34px; height: 20px; margin: 0;
-  border-radius: 999px; background: var(--line); cursor: pointer;
-  transition: background .18s ease; }
-.layerctl__toggle input::after { content: ''; position: absolute;
-  top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
-  background: #fff; box-shadow: 0 1px 2px rgba(16,24,40,.35);
-  transition: transform .18s ease; }
-.layerctl__toggle input:checked { background: var(--accent); }
-.layerctl__toggle input:checked::after { transform: translateX(14px); }
-.layerctl__toggle input:focus-visible { outline: 2px solid var(--accent);
-  outline-offset: 2px; }
 
 /* ---- light-theme modern polish ------------------------------------------ */
-.app-shell__bar { box-shadow: var(--shadow); position: relative; z-index: 10; }
+
 .upload, .upload--lg { background: var(--panel); box-shadow: var(--shadow); }
 .upload:hover, .upload--lg:hover { border-color: var(--accent); }
-.layerctl__handle { background: var(--panel); }
+
 .btn { box-shadow: var(--shadow); }
 .btn--primary { box-shadow: 0 1px 2px rgba(13,148,136,.3); }
 .filetable, .preview table { background: var(--panel); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
 .filetable tr.is-active { background: rgba(13,148,136,.07); }
 .teamlist li.is-active { background: rgba(13,148,136,.10); }
-.nav__link.is-active { color: var(--accent); background: rgba(13,148,136,.10); border-color: transparent; }
+
 .oubranch__name.is-selected { background: rgba(13,148,136,.14); color: var(--accent); }
-.basemap.is-active { border-color: var(--accent); background: rgba(13,148,136,.10); }
 
 /* coordinate / feature popups (maps-app style) */
 .map-popup { font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; color: var(--ink); min-width: 160px; }
@@ -189,61 +161,10 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 @keyframes map-spin { to { transform: rotate(360deg); } }
 
 /* ---- searchable select (FlexSearch-backed filter) ----------------------- */
-.ssel { position: relative; display: inline-block; }
-.ssel__trigger { display: flex; align-items: center; gap: 8px; min-width: 150px;
-  background: var(--panel); border: 1px solid var(--line); color: var(--ink);
-  border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; box-shadow: var(--shadow); }
-.ssel__placeholder { color: var(--muted); }
-.ssel__caret { margin-left: auto; color: var(--muted); font-size: 11px; }
-.ssel__panel { position: absolute; top: 38px; left: 0; z-index: 30; min-width: 240px;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-  box-shadow: var(--shadow-lg); overflow: hidden; }
-.ssel__input { width: 100%; border: none; border-bottom: 1px solid var(--line);
-  padding: 9px 11px; font-size: 13px; outline: none; color: var(--ink); background: var(--panel); }
-.ssel__list { list-style: none; margin: 0; padding: 4px; max-height: 280px; overflow: auto; }
-.ssel__opt { display: flex; flex-direction: column; padding: 7px 9px; border-radius: 7px; cursor: pointer; }
-.ssel__opt:hover { background: var(--panel2); }
-.ssel__opt.is-active { background: rgba(13,148,136,.10); color: var(--accent); }
-.ssel__opt small { color: var(--muted); font-size: 11px; }
-.ssel__empty { padding: 10px; color: var(--muted); font-size: 13px; text-align: center; }
 
 /* ---- org-unit hierarchy tree select ------------------------------------- */
-.outree { position: relative; display: inline-block; }
-.outree__panel { position: absolute; top: 38px; left: 0; z-index: 30; width: 320px;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-  box-shadow: var(--shadow-lg); overflow: hidden; }
-.outree__body { max-height: 340px; overflow: auto; padding: 4px; }
-.outree__error { padding: 10px; color: var(--flag); font-size: 12px; }
-.outree__all { padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; }
-.outree__all:hover { background: var(--panel2); }
-.outree__all.is-active { background: rgba(13,148,136,.10); color: var(--accent); }
-.outree__results { list-style: none; margin: 0; padding: 0; }
-.outree__results li { display: flex; justify-content: space-between; align-items: baseline;
-  gap: 8px; padding: 7px 10px; border-radius: 7px; cursor: pointer; }
-.outree__results li:hover { background: var(--panel2); }
-.outree__results li.is-active { background: rgba(13,148,136,.10); color: var(--accent); }
-.outree__results small { color: var(--muted); font-size: 11px; }
-.outree__branch { }
-.outree__row { display: flex; align-items: center; gap: 2px; }
-.outree__toggle { background: none; border: none; color: var(--muted); cursor: pointer;
-  width: 18px; font-size: 11px; padding: 2px; }
-.outree__spacer { display: inline-block; width: 18px; }
-.outree__name { display: flex; align-items: baseline; gap: 6px; background: none; border: none;
-  color: var(--ink); cursor: pointer; padding: 4px 7px; border-radius: 6px; font-size: 13px;
-  text-align: left; flex: 1; }
-.outree__name:hover { background: var(--panel2); }
-.outree__name small { color: var(--faint); font-size: 10px; }
-.outree__name.is-selected { background: rgba(13,148,136,.14); color: var(--accent); }
 
 /* ---- selected-org-unit week legend -------------------------------------- */
-.mapwrap__weeks { position: absolute; top: 12px; left: 12px; z-index: 5;
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  background: rgba(255,255,255,.92); backdrop-filter: blur(6px);
-  border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; box-shadow: var(--shadow); }
-.mapwrap__weeks-title { font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
-  color: var(--muted); }
-.weekchip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
-.weekchip__dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 
 /* ---- required field + warning hints ------------------------------------- */
 .req { color: var(--flag); }
@@ -251,97 +172,16 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 .upload__status--warn { color: #b45309; }
 
 /* ---- coordinate-layer overlay (analytics dimensions) -------------------- */
-.coordctl { background: rgba(255,255,255,.97); backdrop-filter: blur(6px);
-  border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow-lg);
-  padding: 12px; flex: none; }
-.coordctl__title { font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
-  color: var(--muted); margin-bottom: 8px; }
-.coordctl__list { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow: auto; }
-.coordctl__item label { display: flex; align-items: center; gap: 8px; padding: 5px 0;
-  font-size: 13px; cursor: pointer; }
-.coordctl__item input { accent-color: var(--accent); }
-.coordctl__label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.coordctl__count { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 
 /* ---- grouped multiselect (attributes + stage data elements) ------------- */
-.gmsel { position: relative; display: inline-block; }
-.gmsel__panel { position: absolute; top: 38px; left: 0; z-index: 30; width: 300px;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-  box-shadow: var(--shadow-lg); overflow: hidden; }
-.gmsel__clear { width: 100%; text-align: left; background: none; border: none;
-  border-bottom: 1px solid var(--line); color: var(--accent); cursor: pointer;
-  padding: 8px 11px; font-size: 12px; }
-.gmsel__clear:hover { background: var(--panel2); }
-.gmsel__body { max-height: 320px; overflow: auto; padding: 4px; }
-.gmsel__group + .gmsel__group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
-.gmsel__grouphead { display: flex; align-items: center; justify-content: space-between;
-  padding: 6px 8px; position: sticky; top: 0; background: var(--panel); }
-.gmsel__grouphead label { display: flex; align-items: center; gap: 8px; cursor: pointer;
-  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px;
-  color: var(--muted); }
-.gmsel__grouphead input { accent-color: var(--accent); }
-.gmsel__groupcount { color: var(--faint); font-size: 11px; }
-.gmsel__list { list-style: none; margin: 0; padding: 0 0 4px; }
-.gmsel__list li label { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 20px;
-  border-radius: 7px; cursor: pointer; font-size: 13px; }
-.gmsel__list li label:hover { background: var(--panel2); }
-.gmsel__list input { accent-color: var(--accent); }
-.gmsel__optname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gmsel__badge { font-size: 9px; text-transform: uppercase; letter-spacing: .4px;
-  background: rgba(13,148,136,.14); color: var(--accent); padding: 1px 5px; border-radius: 4px; }
 
 /* ---- period select group headers (searchable grouped list) -------------- */
-.ssel__grouphead { padding: 8px 9px 4px; font-size: 10px; text-transform: uppercase;
-  letter-spacing: .5px; color: var(--faint); font-weight: 600; cursor: default; }
-.ssel__opt--indent { padding-left: 18px; }
 
 /* ---- period select: custom date range (CalendarInput + Apply) ----------- */
-.ssel__daterange { display: flex; flex-direction: column; gap: 8px; padding: 10px 11px 12px;
-  border-bottom: 1px solid var(--line); cursor: default; }
-.ssel__daterow { display: flex; align-items: flex-end; gap: 8px; }
-.ssel__dateinput { flex: 1; min-width: 0; }
-.ssel__dateapply { align-self: flex-end; }
 
 /* ---- analytics data panel (button + clean table) ------------------------ */
-.datapanel__fab { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
-  z-index: 6; display: inline-flex; align-items: center; gap: 8px;
-  background: var(--accent); color: var(--accent-ink); border: none; border-radius: 999px;
-  padding: 10px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
-  box-shadow: 0 6px 20px rgba(13,148,136,.35); transition: transform .12s, box-shadow .12s; }
-.datapanel__fab:hover:not(:disabled) { transform: translateX(-50%) translateY(-2px);
-  box-shadow: 0 10px 28px rgba(13,148,136,.45); }
-.datapanel__fab:disabled { background: var(--line); color: var(--muted); cursor: not-allowed;
-  box-shadow: none; }
-.datapanel__fab-icon { font-size: 14px; }
-.datapanel__fab-count { background: rgba(255,255,255,.25); border-radius: 999px;
-  padding: 1px 8px; font-size: 11px; font-variant-numeric: tabular-nums; }
-
-.datapanel { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 7;
-  max-height: 55%; display: flex; flex-direction: column;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-  box-shadow: var(--shadow-lg); overflow: hidden; }
-.datapanel__head { display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; border-bottom: 1px solid var(--line); }
-.datapanel__title { font-size: 13px; font-weight: 600; }
-.datapanel__close { background: none; border: none; color: var(--muted); cursor: pointer;
-  font-size: 15px; line-height: 1; padding: 4px; border-radius: 6px; }
-.datapanel__close:hover { background: var(--panel2); color: var(--ink); }
-.datapanel__body { flex: 1; overflow: hidden; display: flex; }
-.datapanel__state { padding: 24px; color: var(--muted); font-size: 13px; margin: auto; }
-.datapanel__state--err { color: var(--flag); }
-.datapanel__scroll { flex: 1; overflow: auto; }
-
-.datatable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.datatable thead th { position: sticky; top: 0; background: var(--panel2); text-align: left;
-  padding: 9px 12px; font-weight: 600; color: var(--ink); white-space: nowrap;
-  border-bottom: 1px solid var(--line); }
-.datatable tbody td { padding: 8px 12px; border-bottom: 1px solid var(--line);
-  white-space: nowrap; color: var(--ink); }
-.datatable tbody tr:hover { background: var(--panel2); }
-.datatable tbody tr:last-child td { border-bottom: none; }
 
 /* ---- lazy org-unit tree loading hint ------------------------------------ */
-.outree__loading { font-size: 12px; color: var(--muted); padding: 4px 0; font-style: italic; }
 
 /* ---- in-app user guide (rendered from docs/USER_GUIDE.md) --------------- */
 .page--guide { max-width: 860px; }
@@ -368,13 +208,6 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 /* The app bar carries identity and the per-page tools (search, user); the row
    below it carries navigation only, so the two never compete for the same
    horizontal space on a laptop screen. */
-.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.brand__mark { width: 6px; height: 30px; border-radius: 999px; flex: none;
-  background: linear-gradient(180deg, var(--accent), #0ea5e9); }
-.brand__text { line-height: 1.15; min-width: 0; }
-.brand__sub { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
-.app-shell__nav { background: var(--panel); border-bottom: 1px solid var(--line);
-  padding: 0 16px; position: sticky; top: 0; z-index: 4; }
 
 /* ---- cards (step panels) ------------------------------------------------- */
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
@@ -429,11 +262,9 @@ body { margin: 0; background: var(--bg); color: var(--ink);
   --radius: 10px;
   --radius-lg: 14px;
   --ring: 0 0 0 3px rgba(13,148,136,.25);
-  /* Softer, larger-spread shadows read as "lifted" rather than "outlined" at
-     the low elevations this app uses. */
-  --shadow: 0 1px 2px rgba(16,24,40,.04), 0 2px 8px rgba(16,24,40,.05);
-  --shadow-lg: 0 12px 32px rgba(16,24,40,.10), 0 2px 8px rgba(16,24,40,.06);
-  --bar-h: 58px;
+  /* Shadows and the bar height now come from @theme at the top of this file,
+     so the Tailwind utilities and these rules cannot drift apart. */
+  --bar-h: var(--spacing-bar);
 }
 
 body { font-size: 14px; letter-spacing: -0.005em; }
@@ -442,45 +273,18 @@ body { font-size: 14px; letter-spacing: -0.005em; }
 /* Bar and nav both stick so the primary navigation is reachable from anywhere
    in a long Microplans or Export list. The nav's offset is the bar's height,
    which is why --bar-h is a token rather than a magic number in two places. */
-.app-shell__bar {
-  position: sticky; top: 0; z-index: 20;
-  min-height: var(--bar-h);
-  padding: 8px 24px;
-  background: rgba(255,255,255,.88);
-  backdrop-filter: saturate(180%) blur(12px);
-  border-bottom: 1px solid var(--line);
-  box-shadow: none;
-}
-.app-shell__bar h1 { font-size: 15px; font-weight: 640; letter-spacing: -.01em; }
 
-.app-shell__account { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.app-shell__account [data-test="dhis2-uicore-dropdownbutton-toggle"] {
-  max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
-
-.app-shell__nav {
-  position: sticky; top: var(--bar-h); z-index: 12;
-  display: flex; align-items: stretch; justify-content: space-between; gap: 16px;
-  padding: 0 16px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-  overflow-x: auto;
-}
-.app-shell__nav-group { display: flex; min-width: 0; }
-.app-shell__nav-group--end { margin-inline-start: auto; }
 /* DHIS2 draws the rule under the tab strip on each Tab button, not on the
    TabBar — with two bars there'd be a gap in the middle and a doubled line
    under each one. Hand the rule to .app-shell__nav instead, so it runs the
    full width. The selected-tab indicator is a ::after at bottom:-1px, so it
    still lands exactly on that line. */
-.app-shell__nav [data-test="dhis2-uicore-tab"] { border-bottom-color: transparent; }
-
-.brand__mark { height: 32px; background: linear-gradient(180deg, var(--accent), #0ea5e9); }
 
 /* ---- surfaces ------------------------------------------------------------ */
 .card { border-radius: var(--radius-lg); border-color: var(--line); }
 .card__head { background: linear-gradient(180deg, #fbfcfd, var(--panel2)); }
 .btn { border-radius: var(--radius); }
-.btn:focus-visible, .nav__link:focus-visible { outline: none; box-shadow: var(--ring); }
+
 .filetable, .preview table { border-radius: var(--radius-lg); }
 
 .page { padding: 24px; }
@@ -557,10 +361,7 @@ body { font-size: 14px; letter-spacing: -0.005em; }
 
 /* ---- small screens ------------------------------------------------------- */
 @media (max-width: 720px) {
-  .app-shell__bar { padding: 8px 14px; }
-  .brand__sub { display: none; }
-  .app-shell__nav { justify-content: flex-start; }
-  .app-shell__nav-group--end { margin-inline-start: 0; }
+
   .page { padding: 16px 14px; }
   .access__facts > div { grid-template-columns: 1fr; gap: 4px; }
 }
@@ -643,10 +444,97 @@ body { font-size: 14px; letter-spacing: -0.005em; }
 /* The guide moved out of the tab row into the bar; it still needs to show that
    it is the current page, which a plain secondary Button doesn't do. */
 .app-shell__bar .is-active,
-.app-shell__bar button.is-active { border-color: var(--accent); color: var(--accent); }
-.app-shell__bar .is-active svg { fill: var(--accent); }
 
 @media (max-width: 1080px) {
   .export__layout { grid-template-columns: minmax(0, 1fr); }
   .export__picker { position: static; max-height: none; }
 }
+
+/* ==========================================================================
+   Map workspace v2 — staged filter bar, layer cards, profile popups and the
+   grouped data table.
+
+   Appended as its own layer for the same reason as the block above: the rules
+   here supersede the original map-page styling without editing it, so the
+   older component styles stay readable and this section can be lifted out
+   whole if the workspace is reworked again.
+   ========================================================================== */
+
+/* ---- map page fills the viewport ---------------------------------------- */
+/* The map is the page, so it takes the height the chrome doesn't. Clamped at
+   both ends: never so short that clusters overlap the legend on a laptop,
+   never so tall that the data panel has nowhere to open on a big monitor. */
+
+/* ---- staged filter toolbar ---------------------------------------------- */
+
+/* A hairline between "what am I looking at" and "how am I narrowing it".
+   It only appears with the second group, so the bar never shows a divider
+   with nothing on the far side of it. */
+
+/* ---- floating map cards -------------------------------------------------- */
+
+.layerctl.is-open .layerctl__handle,
+
+/* ---- tracked-entity profile popup ---------------------------------------- */
+/* maplibre's own popup chrome is stripped back to a card: the tip stays (it is
+   what ties the card to its point) but the padding and rounding come from
+   here, so the profile reads as an app surface rather than a tooltip. */
+
+/* The hover preview must not eat clicks aimed at the points underneath it. */
+
+/* Tag renders the span itself, so the class lands on the element rather than a
+   wrapper around it. Sizing it down keeps the status from outweighing the name
+   it sits beside. */
+
+/* Sections scroll as one column so a long profile never pushes the footer
+   (and its "show empty fields" switch) off the bottom of the popup. */
+
+/* Only the middle scrolls — the head keeps the name and flag state on screen,
+   the foot keeps the "show empty fields" switch reachable. */
+
+/* ---- analytics data panel ------------------------------------------------ */
+
+/* The section band above the column names: quieter than the names themselves,
+   so the eye lands on the column it is looking for and uses the band only to
+   tell bio data from a stage. */
+
+/* ---- map summary strip --------------------------------------------------- */
+/* Counts live above the map rather than floating inside it: inside, they sat on
+   top of the scale bar and were covered by the data panel the moment anyone
+   opened it — which is exactly when the numbers matter most. */
+
+/* The outreach-week legend moves to the bottom-left, clear of the zoom
+   controls it used to sit under at the top. */
+
+/* The scale control shares the bottom-left corner, so lift it above the
+   legend instead of letting the two overlap. */
+
+/* Footnote under the data-column picker. It carries the one thing the list
+   itself can't show: what is included when you pick nothing at all. */
+
+/* ==========================================================================
+   The few map-workspace rules that can't be utility classes.
+
+   Everything else in the map workspace is styled with Tailwind on the elements
+   themselves. What's left here targets markup this app doesn't render: the
+   <th> inside @dhis2/ui's DataTable, and maplibre's own popup chrome.
+   ========================================================================== */
+
+/* Section band above the column names in the analytics sheet. The 28px height
+   matches the `top` offset the column-name row is pinned at — change one and
+   the two sticky rows overlap. */
+.datapanel-band {
+  height: 28px; padding-block: 0;
+  background: var(--panel2);
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--muted); text-align: center;
+  border-inline-end: 1px solid var(--line);
+}
+.datapanel-scroll table { width: 100%; }
+.datapanel-scroll td, .datapanel-scroll th { white-space: nowrap; }
+
+/* The user-guide button in the app bar marks itself as the current page with
+   `is-active`. DHIS2's Button renders its own element and svg, so the "you are
+   here" colour has to be applied from outside the component. */
+.app-bar .is-active { border-color: var(--accent); color: var(--accent); }
+.app-bar .is-active svg { fill: var(--accent); }

@@ -139,5 +139,5 @@ export const MapView: React.FC<{
     };
   }, [flags]);
 
-  return <div ref={ref} className="mapview" style={{ height: '60vh', width: '100%' }} />;
+  return <div ref={ref} className="h-[60vh] w-full" />;
 };

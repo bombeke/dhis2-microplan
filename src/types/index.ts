@@ -54,6 +54,17 @@ export interface TrackerPoint {
   name?: string;
   value?: number; // numeric metric rendered on the cluster
   attributes?: Record<string, string>;
+  /** tracked entity behind the point, when analytics returned one */
+  trackedEntity?: string;
+  /** the enrollment the point was read from */
+  enrollment?: string;
+  /**
+   * Key into the profile map (`CoordinateAnalyticsResult.profilesById`) — the
+   * tracked entity id when there is one, otherwise the enrollment id. This is
+   * what the map popup looks the entity's profile up by.
+   */
+  profileId?: string;
+  orgUnitName?: string;
 }
 
 /** Result of evaluating a point against assigned settlement polygons. */
