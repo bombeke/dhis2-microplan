@@ -5,6 +5,7 @@ import {
   Button,
   ButtonStrip,
   CircularLoader,
+  IconCalendar24,
   IconLock24,
   IconSettings24,
   IconUser24,
@@ -27,6 +28,7 @@ import { NAMESPACE } from '../lib/microplanStore';
 import { RoleAuthorityTable } from '../components/settings/RoleAuthorityTable';
 import { GroupAccessPanel } from '../components/settings/GroupAccessPanel';
 import { AccessSummary } from '../components/settings/AccessSummary';
+import { ReportingCyclePanel } from '../components/settings/ReportingCyclePanel';
 
 /**
  * Administration page, reachable only with F_ADMIN_MICROPLAN (or ALL).
@@ -43,11 +45,12 @@ import { AccessSummary } from '../components/settings/AccessSummary';
  * honest.
  */
 
-type Section = 'roles' | 'groups' | 'access';
+type Section = 'roles' | 'groups' | 'cycle' | 'access';
 
 const SECTIONS: { id: Section; label: string; icon: React.ReactElement }[] = [
   { id: 'roles', label: 'Role authorities', icon: <IconLock24 /> },
   { id: 'groups', label: 'User groups', icon: <IconUserGroup24 /> },
+  { id: 'cycle', label: 'Reporting cycle', icon: <IconCalendar24 /> },
   { id: 'access', label: 'Your access', icon: <IconUser24 /> },
 ];
 
@@ -62,6 +65,7 @@ const fingerprint = (s: MicroplanSettings): string => {
     maps(s.roleAuthorities),
     maps(s.groupAuthorities),
     maps(s.groupMembers),
+    s.reportingCycle,
   ]);
 };
 
@@ -208,7 +212,8 @@ export const SettingsPage: React.FC = () => {
           <p className="page__lead">
             Grant microplan authorities to DHIS2 user roles and user groups when editing
             the roles themselves isn't an option. These grants are additive — they never
-            remove access someone already has in DHIS2.
+            remove access someone already has in DHIS2. The reporting cycle sets how
+            microplan years and quarters are counted.
           </p>
         </div>
         <ButtonStrip>
@@ -284,6 +289,14 @@ export const SettingsPage: React.FC = () => {
                 disabled={save.isPending}
               />
             ))}
+
+          {section === 'cycle' && (
+            <ReportingCyclePanel
+              value={draft.reportingCycle}
+              onChange={(reportingCycle) => setDraft((d) => ({ ...d, reportingCycle }))}
+              disabled={save.isPending}
+            />
+          )}
 
           {section === 'access' && permissions && (
             <AccessSummary permissions={permissions} groups={groups.data ?? []} />

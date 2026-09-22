@@ -1,4 +1,9 @@
 import { NAMESPACE, isMissing, putKey } from './microplanStore';
+import {
+  DEFAULT_REPORTING_CYCLE,
+  isReportingCycle,
+  type ReportingCycle,
+} from './planSchedule';
 
 /**
  * App-level access settings, persisted in the DHIS2 dataStore at
@@ -25,6 +30,10 @@ import { NAMESPACE, isMissing, putKey } from './microplanStore';
  *   groupAuthorities  userGroup id -> authorities granted to members of that group
  *   groupMembers      userGroup id -> extra user ids treated as members *here*
  *
+ * Alongside the grants it holds one app-wide preference, `reportingCycle`:
+ * which month the reporting (financial) year starts in, which decides how the
+ * Create Microplan page lays out yearly and quarterly plans.
+ *
  * `groupMembers` lets an admin put a user into a microplan group without
  * touching DHIS2 group metadata (again, an authority they may not have). Real
  * DHIS2 group membership still counts — the two are unioned, never subtracted.
@@ -49,6 +58,16 @@ export const MICROPLAN_AUTHORITIES: AuthorityDescriptor[] = [
     value: 'F_ADD_MICROPLAN',
     label: 'Upload microplans',
     description: 'Show the Upload tab and save new microplans to the dataStore.',
+  },
+  {
+    value: 'F_CREATE_MICROPLAN',
+    label: 'Create microplans',
+    description: 'Build microplans on the Create Microplan page, save drafts and submit them for review.',
+  },
+  {
+    value: 'F_APPROVE_MICROPLAN',
+    label: 'Review microplans',
+    description: 'Add review notes to submitted microplans and approve them or send them back.',
   },
   {
     value: 'F_DELETE_MICROPLAN',
@@ -87,6 +106,8 @@ export interface MicroplanSettings {
   roleAuthorities: Record<string, string[]>;
   groupAuthorities: Record<string, string[]>;
   groupMembers: Record<string, string[]>;
+  /** first month of the reporting year — JANUARY is the calendar year */
+  reportingCycle: ReportingCycle;
 }
 
 export const SETTINGS_VERSION = 1;
@@ -98,6 +119,7 @@ export const emptySettings = (): MicroplanSettings => ({
   roleAuthorities: {},
   groupAuthorities: {},
   groupMembers: {},
+  reportingCycle: DEFAULT_REPORTING_CYCLE,
 });
 
 /**
@@ -131,6 +153,9 @@ export function normaliseSettings(raw: unknown): MicroplanSettings {
     roleAuthorities: mapOfStrings(src.roleAuthorities),
     groupAuthorities: mapOfStrings(src.groupAuthorities),
     groupMembers: mapOfStrings(src.groupMembers),
+    reportingCycle: isReportingCycle(src.reportingCycle)
+      ? src.reportingCycle
+      : DEFAULT_REPORTING_CYCLE,
   };
 }
 

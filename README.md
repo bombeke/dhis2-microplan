@@ -217,7 +217,7 @@ pnpm-workspace.yaml          pnpm 11 settings (hoist, engine, build approvals)
 
 Microplan authorities (`F_VIEW_MICROPLAN`, `F_ADD_MICROPLAN`,
 `F_DELETE_MICROPLAN`, `F_DOWNLOAD_MICROPLAN`, `F_READ_GPS_MICROPLAN`,
-`F_ADMIN_MICROPLAN`) are declared as `customAuthorities` in `d2.config.js` and
+`F_ADMIN_MICROPLAN`, `F_CREATE_MICROPLAN`, `F_APPROVE_MICROPLAN`) are declared as `customAuthorities` in `d2.config.js` and
 resolved by `hooks/useUserPermissions.ts` in two layers:
 
 1. The user's real DHIS2 authorities from `/api/me` (`ALL` short-circuits
@@ -232,7 +232,9 @@ authority DHIS2 grants, so the DHIS2 permission model stays authoritative. It
 exists because granting a custom authority the proper way needs rights over
 DHIS2 user roles that microplan programme staff often don't hold. See
 `lib/microplanSettings.ts` for the stored shape and `src/docs/USER_GUIDE.md`
-§7 for the administrator-facing documentation.
+§8 for the administrator-facing documentation. The Create Microplan workflow
+(draft → submitted → approved / sent back) is in `lib/createdPlanStore.ts`
+and §4 of the guide.
 
 Bootstrapping is deliberately not possible from inside the app: the first
 `F_ADMIN_MICROPLAN` has to come from a DHIS2 user role.

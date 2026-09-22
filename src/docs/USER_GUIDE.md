@@ -22,12 +22,13 @@ questions:
 
 You work from a tab bar under the app title. The tabs are the places you
 *work in*, listed in the order the job usually flows, with administration
-separated at the far right — so the four work tabs never shift position
-between an administrator's screen and a field user's.
+separated at the far right — so the work tabs never shift position between
+an administrator's screen and a field user's.
 
 | Tab | What it's for |
 |---|---|
 | **Map** | The coverage map — filters, layers, flagged visits |
+| **Create Microplan** | Build a microplan in the app, week by week, and send it for review (needs create or review rights) |
 | **Microplans** | The catalogue of uploaded microplans (previously "Files") |
 | **Upload** | Add a new microplan from CSV/Excel (needs upload rights) |
 | **Export** | Download the data behind a saved DHIS2 visualization as CSV or JSON |
@@ -56,6 +57,8 @@ there is no separate username/password. What you can do depends on which
 |---|---|
 | `F_VIEW_MICROPLAN` | Required to open the app at all — Map, Microplans, Export, and User guide |
 | `F_ADD_MICROPLAN` | Shows the **Upload** tab and allows uploading new microplans |
+| `F_CREATE_MICROPLAN` | Shows the **Create Microplan** tab and allows building, saving and submitting microplans |
+| `F_APPROVE_MICROPLAN` | Shows the **Create Microplan** tab and allows reviewing submitted microplans — adding row notes, approving or sending back |
 | `F_DELETE_MICROPLAN` | Shows the **Delete** button on the **Microplans** page |
 | `F_DOWNLOAD_MICROPLAN` | Exporting analytics data as CSV or JSON from the **Export** page |
 | `F_READ_GPS_MICROPLAN` | Seeing raw event coordinates and out-of-bounds flags on the map |
@@ -72,7 +75,7 @@ this order:
    that role has it everywhere.
 2. **This app's Settings page.** If editing DHIS2 user roles isn't practical
    in your instance, an app administrator can map microplan authorities onto
-   existing user roles and user groups from inside the app (see §7). The app
+   existing user roles and user groups from inside the app (see §8). The app
    consults this list whenever DHIS2 itself hasn't already granted the
    authority.
 
@@ -158,7 +161,218 @@ available to every user of the app on this instance, not just you.
 
 ---
 
-## 4. Managing uploaded microplans (Microplans page)
+## 4. Creating a microplan (Create Microplan page)
+
+Instead of preparing a spreadsheet and uploading it, you can build the
+microplan directly in the app. Go to **Create Microplan** in the navigation
+bar. The tab appears for anyone holding `F_CREATE_MICROPLAN` (to plan) or
+`F_APPROVE_MICROPLAN` (to review), or `ALL`.
+
+The page works like a spreadsheet: one row per facility and assigned person,
+one column per week, and in every week cell a searchable list of the
+settlements that facility's team can visit.
+
+### 4.1 Choose what you're planning
+
+The filter panel at the top reads as one sentence: *for this programme, in
+this organisation unit, plan monthly (or quarterly, or yearly), for this
+period.* All four are required.
+
+| Filter | What it does |
+|---|---|
+| **Programme** | The DHIS2 program the outreach belongs to. Only facilities the programme is assigned to are listed. |
+| **Organisation unit** | Where to plan — a State, LGA or ward. Every facility under it (with the programme) becomes part of the plan. |
+| **Schedule** | **Monthly** gives one column per week. **Quarterly** gives one column per month of the quarter (3). **Yearly** gives one column per month of the year (12). |
+| **Period** | Monthly: the current month and the next 12. Quarterly: the remaining quarters of the current year and all 4 of the next. Yearly: the current year and the next 5. Past periods can't be planned. |
+
+Years and quarters follow the instance's **reporting cycle** — a calendar
+year, or a financial year starting in April, July or October — which an
+administrator sets in **Settings → Reporting cycle** (§8.4). For example, on
+an April–March cycle, *FY 2026/27* runs from April 2026 to March 2027 and its
+Q1 is April–June 2026. The period list is grouped under the reporting year
+(and, for months, the quarter) each period belongs to, and a line under the
+filters reminds you which cycle is in use. Months and weeks are the same
+whichever cycle is chosen.
+
+**Reset filters** (at the end of the filter row) clears the programme and
+org unit and goes back to the current month. If you have unsaved edits, it
+asks first.
+
+There is exactly **one microplan per programme, organisation unit and
+period**. Choosing the same three again always reopens the same plan — you
+can't accidentally start a second copy.
+
+### 4.2 Finding your microplans
+
+Until the filters are complete, the page shows the **list of created
+microplans**. With a plan open, press **All microplans** (top right, with the
+number of plans) to get back to the list at any time; **← Back to …** returns
+you to the plan you were on, unsaved edits intact.
+
+The list is split into **Awaiting your review** (for reviewers), **Your
+microplans** (ones you created or last saved) and **Other microplans**. Filter
+it by status — **All**, **Draft**, **Awaiting review**, **Sent back**,
+**Approved**, each with its count — or search by org unit, programme, period,
+creator or reviewer. Click a card to open that plan; the plan you last had
+open is outlined.
+
+### 4.3 How weeks and months are worked out
+
+On a **quarterly** or **yearly** plan the columns are simply the months of
+the quarter or year, in reporting-cycle order — a yearly plan on a July cycle
+starts with July and ends with June.
+
+For a **monthly** plan, the columns are weeks:
+
+Weeks run **Monday to Sunday**. A week that starts in one month and ends in
+the next counts as **Week 1 of the later month** — so each week belongs to
+the month its Sunday falls in. Most months therefore have 4 weeks; a month
+with five Sundays has 5. For example, for **September 2026**:
+
+| Week 1 | Week 2 | Week 3 | Week 4 |
+|---|---|---|---|
+| 31 Aug – 6 Sep | 7–13 Sep | 14–20 Sep | 21–27 Sep |
+
+and 28 Sep – 4 Oct is Week 1 of October. Every day of the year is in exactly
+one week of one month's plan, so nothing is planned twice or missed at a
+month boundary. Each column header shows its date range.
+
+### 4.4 The rows
+
+The grid lists the **lowest-level org units the programme is assigned to**
+under your selection — normally the health facilities. For each one:
+
+- the org-unit levels between your selection and the facility (e.g. **LGA**,
+  **Ward**) are shown as their own columns, so you can sort out which ward a
+  facility belongs to at a glance;
+- **Assigned to** shows the DHIS2 user(s) whose data-capture org unit *is that
+  facility*. Users assigned higher up (to the ward or LGA) are not listed. A
+  facility with three users has three rows — one per person — so each person
+  gets their own weekly settlements;
+- a facility with nobody assigned still gets one row, marked **Unassigned**,
+  so it can be planned (and its assignment fixed in DHIS2 later).
+
+If someone is un-assigned from a facility after you have planned settlements
+for them, their row is kept and marked **no longer assigned**, so planned work
+isn't silently lost. When a previously *unassigned* facility gets a user, the
+settlements planned on the Unassigned row move to that user's row.
+
+Use the search box above the grid to find a facility, ward or person, and
+tick **Rows with gaps only** to see just the rows that still have an empty
+week. The strip above the grid shows how many facilities, rows and
+settlements are in the plan, and what share of cells are filled in.
+
+When there are many rows, the grid is split into pages. Choose **Rows per
+page** (25, 50, 100, 250 or 500) at the bottom, and use the arrows to move
+between pages.
+
+### 4.5 Picking settlements in a week cell
+
+Click a week cell (or move to it with the arrow keys and press **Enter**). A
+panel opens beside the cell — on a phone it slides up from the bottom of the
+screen — listing every settlement in the facility's **ward** (the level
+directly above the facility).
+
+- **Type to search.** Every word you type must appear in the settlement's
+  name, ward, LGA or state; names that *start* with what you typed come
+  first. Accents are ignored, so `oyo` finds *Ọ̀yọ́*. Search is instant even for
+  very long lists.
+- **Click a settlement, or press Enter**, to tick or untick it. Pick as many
+  as you need; the cell shows the first two and a **+N** count.
+- **Select all / Select matches** ticks everything currently listed (up to
+  1,000 at a time); **Clear** empties the cell.
+- A yellow **W2** tag next to a settlement means it is already planned for
+  the same person in Week 2 — a hint, not a block.
+- If a settlement is missing from the list, type its name and choose **Add
+  "…" as a settlement not in the list**. It is saved with a **new** tag so it
+  can be checked later.
+- **Backspace** in an empty search box removes the last settlement you
+  picked. **Esc** or **Done** closes the panel.
+
+The settlement list comes from the national settlements service and is
+looked up by the ward's **name** (a two-letter state prefix like `kn` and a
+trailing "Ward" are ignored when matching). It is downloaded **once per ward**
+and shared by every facility and every week in that ward, and the lists for
+the wards on the page you're looking at are fetched in the background — so
+the first cell you open is usually ready already.
+
+In the grid, **arrow keys** move between cells like a spreadsheet, and the
+facility column stays pinned on the left while you scroll across the weeks
+(on tablets and larger screens).
+
+### 4.6 Saving, submitting and review
+
+A microplan moves through four states, shown as a coloured badge beside its
+title:
+
+| State | Who can change what |
+|---|---|
+| **Not started** / **Draft** | Planners (`F_CREATE_MICROPLAN`) edit the week cells and **Save draft** as often as they like. |
+| **Awaiting review** | Read-only for planners. The assigned reviewer can write a **Review note** on any row, then **Approve** or **Send back**. |
+| **Sent back** | Editable again for planners, with the reviewer's notes and comment shown. Make the changes and **Re-submit**. |
+| **Approved** | Final and read-only for everyone. |
+
+1. **Save draft** stores your work in the DHIS2 dataStore. Nothing is saved
+   automatically — an amber *Unsaved changes* marker shows when you have
+   edits, and the browser warns you if you try to close the tab. Switching
+   to another app tab and back keeps your unsaved edits; choosing a
+   different plan in the filters asks before discarding them.
+2. **Submit for review** asks you to choose a **reviewer** (who needs
+   `F_APPROVE_MICROPLAN`) and optionally add a message. It warns you if some
+   cells are still empty, but lets you submit anyway. From here the plan is a
+   snapshot: the reviewer sees exactly what you submitted, even if
+   assignments change in DHIS2 afterwards.
+3. The **reviewer** opens the plan (it's in their *Awaiting your review*
+   list), adds a note to any row that needs attention in the **Review note**
+   column — every other cell is read-only for them — and can **Save notes**
+   along the way. Then:
+   - **Approve** — optionally with a comment. The plan becomes final.
+   - **Send back** — with a comment saying what needs to change (required).
+     The plan returns to the planners in the **Sent back** state, with the
+     row notes still visible, until it is re-submitted.
+
+A superuser (`ALL`) can review any submitted plan, whoever the named reviewer
+is.
+
+If a colleague saved the same plan after you opened it, saving shows **Someone
+else saved this microplan** and lets you either **Discard mine, load theirs**
+or **Overwrite with mine** — the app never silently replaces someone else's
+work.
+
+### 4.7 Discarding
+
+- **Discard changes** appears while you have unsaved edits. It throws them
+  away and puts the grid back to the last saved version (or empty, if the
+  plan has never been saved).
+- **Discard microplan** permanently deletes a plan that is still a **Draft**
+  or **Sent back** — every planned settlement, review note and its history,
+  for everyone — after you confirm. You'll need `F_CREATE_MICROPLAN`. A plan
+  that is awaiting review or approved can't be discarded. Choosing the same
+  programme, org unit and period again afterwards starts a fresh, empty plan.
+
+### 4.8 Downloading the plan as CSV
+
+**CSV** downloads the **whole** plan — every row on every page, regardless of
+the search box — with one column per org-unit level (all levels, from the
+country down), the facility and its id, the assigned person and username, one
+column per week (settlements separated by `;`, with the week's dates in the
+header), the total number of distinct settlements for the row, the review
+note, the period and the status. The file opens directly in Excel with
+accented names intact.
+
+### 4.9 Where created microplans are stored
+
+Created microplans live in the same `microplan` dataStore namespace as
+uploaded ones, under their own keys:
+
+- `created-index` — the catalogue shown before you pick filters;
+- `created:<programme>_<org unit>_<period>` — the full plan: its rows and
+  selected settlements, review notes, reviewer, and a history of who saved,
+  submitted, approved or sent it back, and when.
+
+---
+
+## 5. Managing uploaded microplans (Microplans page)
 
 Go to **Microplans** to see every microplan anyone has uploaded: file name,
 program, period, org unit, level, team/settlement counts, who uploaded it,
@@ -177,7 +391,7 @@ If nothing has been uploaded yet, the page tells you so and points you to
 
 ---
 
-## 5. The Map page
+## 6. The Map page
 
 This is the main working view. It reads top to bottom: a **filter bar** that
 asks what you want to see, a **summary strip** of the resulting counts, and
@@ -185,15 +399,15 @@ then the map itself, with its layer cards at the top-right and the data table
 waiting behind **View data** at the bottom.
 
 Hovering or clicking any visit point opens that person's full profile — bio
-data plus every program stage — without leaving the map. See §5.6.
+data plus every program stage — without leaving the map. See §6.6.
 
 Two things deliberately open **over the page rather than inside the map**: the
 profile card and the data table. Both used to be drawn inside the map's frame,
 which meant anything taller than the frame was simply cut off — and the part
 that got cut was the data. They now float above it, so what you open is always
-whole. §5.8 covers how both behave on a phone or tablet.
+whole. §6.8 covers how both behave on a phone or tablet.
 
-### 5.1 Filtering what you're looking at
+### 6.1 Filtering what you're looking at
 
 The **filter bar** across the top of the map is staged: it asks for the two
 things every query needs first, and only then offers the filters that narrow
@@ -222,7 +436,7 @@ there is nothing yet for those filters to act on.
    applied, the field shows the range, e.g. `2026-08-02 - 2026-08-09`, in place
    of a relative period name.
 5. **Data columns** — the attributes and program-stage data elements you want
-   added to the data table and to each tracked entity's profile. See §5.2.
+   added to the data table and to each tracked entity's profile. See §6.2.
 
 The controls all start from the **left edge** and wrap onto a second row as
 the window narrows, so they read in order instead of drifting apart across a
@@ -234,7 +448,7 @@ programme, team, period, extra columns. Each chip has an **✕** that removes
 just that one filter, which is quicker than reopening its dropdown; **Clear
 all** resets everything.
 
-### 5.2 Choosing extra data columns
+### 6.2 Choosing extra data columns
 
 The **Data columns** picker lists everything the selected programme collects,
 grouped the way the programme itself is structured:
@@ -248,9 +462,9 @@ Tick a group's header to take all of its fields at once, or pick individual
 fields; the search box matches names across every group. What you pick has two
 effects:
 
-- the fields become **columns in the data table** (§5.7), placed under a band
+- the fields become **columns in the data table** (§6.7), placed under a band
   carrying their group's name;
-- the fields are **filled in on each entity's profile** (§5.6).
+- the fields are **filled in on each entity's profile** (§6.6).
 
 Two things are always included whether or not you pick them, so you never have
 to: every **bio-data attribute**, and every attribute or data element that
@@ -263,7 +477,7 @@ Keeping stage data elements opt-in is deliberate: a programme with a dozen
 stages would otherwise turn every pan of the map into a several-hundred-column
 query.
 
-### 5.3 Searching settlements and wards
+### 6.3 Searching settlements and wards
 
 The search box in the top app bar (visible on the Map page) does a type-ahead
 search across every settlement and ward available to the app — hundreds of
@@ -273,7 +487,7 @@ beneath the field, each tagged **settlement** or **ward** and showing its
 ward/state for context. On a phone the field moves to its own row under the
 tabs, where it has the width a search box needs.
 
-### 5.4 Reading the map
+### 6.4 Reading the map
 
 Above the map, a **summary strip** carries the numbers that say whether this
 view is worth acting on: microplans shown, **flagged visits** (red when there
@@ -303,7 +517,7 @@ On the map itself:
 
   ![Microplanning Map](images/screenshot_display.png)
 
-### 5.5 Layers and point layers
+### 6.5 Layers and point layers
 
 Two cards sit at the top-right of the map. Click either header to collapse it —
 and on a phone they *start* collapsed, because open they would cover most of
@@ -329,7 +543,7 @@ element, this card lists each one with the number of points it contributed, so
 you can show them independently. **Hide all / Show all** at the foot toggles
 the lot.
 
-### 5.6 The tracked-entity profile (point popups)
+### 6.6 The tracked-entity profile (point popups)
 
 **Hover** any point — flagged or not — and a preview card opens with who the
 record is about, whether it falls inside or outside the assigned area, the
@@ -376,7 +590,7 @@ showing the analytics values rather than going blank.
 Click the **✕**, press the point again, or click empty map to dismiss a pinned
 card.
 
-### 5.7 Viewing the underlying data
+### 6.7 Viewing the underlying data
 
 Click **View data** at the bottom of the map to open the table of analytics
 rows behind the current selection. It stays disabled until a programme, org
@@ -430,7 +644,7 @@ Up to **20,000 rows** are fetched for one selection, in pages, behind the
 scenes. If a selection is bigger than that, the subtitle says *capped* — narrow
 the period or pick a lower-level organisation unit to see the rest.
 
-### 5.8 On a phone or tablet
+### 6.8 On a phone or tablet
 
 The whole app works at phone width; the map page rearranges rather than
 shrinking:
@@ -450,7 +664,7 @@ avatar still opens the same menu.
 
 ---
 
-## 6. Exporting data (Export page)
+## 7. Exporting data (Export page)
 
 The **Export** page takes a visualization already saved in your DHIS2
 instance and downloads the data behind it as a **CSV** or **JSON** file —
@@ -473,7 +687,7 @@ You only see visualizations that are shared with your DHIS2 user, and the data
 you get back is the data your user is allowed to see. Exporting never widens
 your access.
 
-### 6.1 Which endpoint your data actually comes from
+### 7.1 Which endpoint your data actually comes from
 
 This matters more than it sounds. The place a visualization is *saved* is not
 the place its *data* is downloaded from, and a line list is not fetched the
@@ -504,7 +718,7 @@ Practical consequences worth knowing:
 - **Aggregated exports round the way the visualization does**; line lists
   return the values as recorded.
 
-### 6.2 Step 1 — choose a visualization
+### 7.2 Step 1 — choose a visualization
 
 Pick the group tab, then type any part of a name into **Search by name**. The
 search runs against the server (case-insensitive, matches anywhere in the
@@ -522,7 +736,7 @@ shows the dimensions it's built from — its columns, rows, and filters — plus
 its program and stage where it has them. The list stays pinned beside that
 panel while you work, so what you're exporting never scrolls out of sight.
 
-### 6.3 Step 2 — choose a date range
+### 7.3 Step 2 — choose a date range
 
 Three options:
 
@@ -548,7 +762,7 @@ How the range reaches DHIS2 depends on what you picked:
 Leaving the range on **Pivot table period** for a line list falls back to the
 dates saved on the visualization itself, if it has any.
 
-### 6.4 Step 3 — download the data
+### 7.4 Step 3 — download the data
 
 Click **Download data**. The app requests the data **500 rows at a time** and
 keeps going until it has everything — a 5 000-row result arrives as 10 chunks.
@@ -562,7 +776,7 @@ A progress bar reports the chunk it's on and the row count so far, e.g.
   press **Download data** again.
 - A finished download reports how many rows arrived in how many chunks.
 
-### 6.5 Step 4 — export the file
+### 7.5 Step 4 — export the file
 
 The **Export** button stays disabled until all chunks have finished. Then:
 
@@ -583,7 +797,7 @@ file before saving it.
 Files are named after the visualization, the range, and today's date, for
 example `anc-1st-visit-by-district_last-7-months_2026-09-21.csv`.
 
-### 6.6 When a visualization can't be exported
+### 7.6 When a visualization can't be exported
 
 Two cases are refused with an explanation instead of a broken download, and
 both are fixed in the app the visualization was made in:
@@ -598,7 +812,7 @@ both are fixed in the app the visualization was made in:
 
 ---
 
-## 7. Settings (administrators)
+## 8. Settings (administrators)
 
 The **Settings** tab appears only for users holding `F_ADMIN_MICROPLAN` (or
 `ALL`). It is where you decide who can use the app, without needing rights to
@@ -608,14 +822,15 @@ Everything on the page edits one draft. Nothing takes effect until you press
 **Save settings**, and while you have unsaved edits a yellow strip says so;
 **Discard changes** puts the draft back to what is stored.
 
-### 7.1 What is stored, and where
+### 8.1 What is stored, and where
 
 Your choices are saved to the DHIS2 dataStore under the key
-`microplan/settings`. That key holds three things:
+`microplan/settings`. That key holds four things:
 
 - which microplan authorities each **user role** confers,
 - which microplan authorities each **user group** confers,
-- which **users** the app should treat as members of a user group.
+- which **users** the app should treat as members of a user group,
+- the **reporting cycle** used by Create Microplan (§8.4).
 
 Because it lives in the dataStore rather than in DHIS2 metadata, saving here
 never edits a user role, a user group, or a user account. It only tells *this
@@ -623,7 +838,7 @@ app* to grant extra access — see §2.1.
 
 The foot of the page shows when the settings were last saved and by whom.
 
-### 7.2 Role authorities
+### 8.2 Role authorities
 
 A grid of your DHIS2 user roles down the side and the microplan authorities
 across the top. Tick a box to give holders of that role the authority.
@@ -636,7 +851,7 @@ marked **Superuser** and show DHIS2 tags throughout.
 
 Use the filter box above the grid to find a role by name in a long list.
 
-### 7.3 User groups
+### 8.3 User groups
 
 Pick a group from the dropdown, then set two things:
 
@@ -652,7 +867,27 @@ in one place without being offered a removal this screen couldn't perform.
 This is the route to use when you want to give a handful of named people
 access without creating a user role for them.
 
-### 7.4 Your access
+### 8.4 Reporting cycle
+
+Choose the month your reporting year starts in:
+
+| Option | Year runs | Example year | Its Q1 |
+|---|---|---|---|
+| **Calendar year** (default) | January – December | 2026 | Jan–Mar 2026 |
+| **Financial year from April** | April – March | FY 2026/27 | Apr–Jun 2026 |
+| **Financial year from July** | July – June | FY 2026/27 | Jul–Sep 2026 |
+| **Financial year from October** | October – September | FY 2026/27 | Oct–Dec 2026 |
+
+Each option previews the current year and its four quarters. A financial year
+is named by the two calendar years it spans, starting year first.
+
+The choice drives the **Quarterly** and **Yearly** periods on the Create
+Microplan page, and how its monthly list is grouped. Like every other
+setting, it takes effect when you press **Save settings**. Changing it later
+doesn't touch microplans already created — each keeps the period and columns
+it was created with, and stays openable from the list.
+
+### 8.5 Your access
 
 A read-only summary of how your own access resolves: the account you're signed
 in as, your user roles, the groups you count as a member of, and — for every
@@ -664,10 +899,13 @@ access appears as soon as the affected user reloads the app.
 
 ---
 
-## 8. Typical workflow
+## 9. Typical workflow
 
-1. **Upload** this round's microplan (CSV/Excel), tag it with the right
-   program, period, and org unit.
+1. **Plan** this round's microplan on **Create Microplan** — pick the
+   programme, org unit and month, fill in each team's settlements week by
+   week, and submit it; a reviewer approves it or sends it back. Or, if the
+   plan already exists as a spreadsheet, **Upload** it (CSV/Excel), tagged
+   with the right program, period, and org unit.
 2. Go to **Microplans** and confirm it appears with the expected
    team/settlement counts, then click **Show on map**.
 3. On the **Map**, pick the same programme and org unit — the rest of the
@@ -691,10 +929,21 @@ access appears as soon as the affected user reloads the app.
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 | Symptom | Likely cause / fix |
 |---|---|
+| No **Create Microplan** tab | You need `F_CREATE_MICROPLAN` or `F_APPROVE_MICROPLAN` (or `ALL`), from your DHIS2 user role or the app's Settings page. |
+| Create Microplan says "No facilities to plan" | The programme isn't assigned to any org unit under your selection. Assign it to the facilities in the DHIS2 **Maintenance** app, or pick another org unit. |
+| A facility shows **Unassigned** | No DHIS2 user has that facility as their data-capture org unit. Users assigned to the ward or LGA above it don't count. Fix it in the DHIS2 **Users** app; the planned settlements move to the new user's row. |
+| A week cell says "No settlements found" | The settlements service has no ward with the same name as the facility's parent org unit. Check the spelling of the ward name in DHIS2 against the settlements list, or use **Add "…"** to type the settlements in by hand. |
+| No **Quarterly** periods that match our financial year | The reporting cycle is still the calendar year. An administrator can change it in **Settings → Reporting cycle**. |
+| The period list shows a "Selected" group | You opened a plan from the list whose period is no longer offered — it has started, or the reporting cycle changed since. It stays open and editable; new plans use the current cycle. |
+| No **Discard microplan** button | The plan has never been saved (there is nothing to delete — use **Discard changes** or **Reset filters**), it is awaiting review or approved, or you don't hold `F_CREATE_MICROPLAN`. |
+| Can't edit a microplan's cells | It has been submitted or approved. Only a plan that is a draft or has been sent back can be edited. |
+| No **Approve** / **Send back** buttons | They appear only for the reviewer named when the plan was submitted (or a superuser), and only while it is awaiting review. The reviewer also needs `F_APPROVE_MICROPLAN`. |
+| **Send back** stays greyed out | A comment explaining what needs to change is required. |
+| "Someone else saved this microplan" | A colleague saved the same plan after you opened it. Load theirs to see their changes, or overwrite with yours if you're sure. |
 | "Select a program to enable saving" on Upload | Pick an Activity/program before saving — it's required on every upload. |
 | A column wasn't picked up in the preview table | Its header doesn't match a recognised alias (see §3.1). Rename the column to one of the listed variants and re-upload. |
 | Settlement count is 0 after saving | The configured settlement-geometry source (GRID3/ArcGIS, PMTiles, or org-unit geometry) had no match for the ward names in your file — geometry is optional and upload still succeeds, but polygons won't draw on the map. Check ward name spelling against the source. |
@@ -716,21 +965,31 @@ access appears as soon as the affected user reloads the app.
 | A profile card or the data table looked cut off | Fixed — both now open over the page rather than inside the map frame. If a card still looks short, it is scrolling internally: the header and the **Show empty fields** footer stay put while the sections between them scroll. |
 | On a phone, the layer cards seem to be missing | They start collapsed there so they don't cover the map. Tap **Layers** or **Point layers** to open one. |
 | On a phone, I can't find the settlement search | It moves out of the app bar onto its own row directly under the tabs. |
-| A profile card is titled with a caregiver's name | It shouldn't be — only `First name`, `Middle name`, `Surname` and `Last name` can title a card (§5.6). If you see a caregiver's name there, that attribute is probably named exactly one of those four; rename it in the DHIS2 **Maintenance** app. |
+| A profile card is titled with a caregiver's name | It shouldn't be — only `First name`, `Middle name`, `Surname` and `Last name` can title a card (§6.6). If you see a caregiver's name there, that attribute is probably named exactly one of those four; rename it in the DHIS2 **Maintenance** app. |
 | A profile card shows an ID instead of a name | The programme has none of the four own-name attributes, or they are empty for this record. The card falls back to the first identifying attribute rather than borrowing a relative's name. |
 | The **Export** page lists nothing | Check the count on the other group tab first — a line list is not in **Aggregated** and a pivot table is not in **Events / Line list**. If both are 0, nothing is shared with your DHIS2 user: save a favourite in Data Visualizer or Line Listing and share it with your user or user group. |
 | **Export** button stays disabled | The download hasn't finished (or hasn't started). Run **Download data** first — the button turns on only when every chunk has arrived. |
 | Export download says "No rows" | The visualization has no data for the range you chose. Widen the range, or switch back to **Pivot table period**. |
-| "This visualization can't be exported" | It is a line list saved across several programs, or a tracked-entity line list with no entity type. See §6.6 — both are fixed by re-saving it in the Line Listing app. |
+| "This visualization can't be exported" | It is a line list saved across several programs, or a tracked-entity line list with no entity type. See §7.6 — both are fixed by re-saving it in the Line Listing app. |
 | A line-list export is missing a column you expect | The data element is probably in a program stage the saved visualization doesn't include. Open **Request details** in the summary panel to see exactly which dimensions were asked for. |
 | A long export download seems stuck | Very large results take many chunks; the progress line shows the current chunk. If it genuinely stalls, **Cancel**, narrow the date range, and try again. |
 
 ---
 
-## 10. Glossary
+## 11. Glossary
 
 - **Microplan** — the uploaded file describing which team visits which
   settlements, and in which weeks, for a given activity/program and period.
+- **Created microplan** — a microplan built on the **Create Microplan**
+  page rather than uploaded: one per programme, org unit and period, with a
+  Draft → Awaiting review → Approved (or Sent back) workflow.
+- **Reporting cycle** — the month the reporting (financial) year starts in:
+  January (calendar year), April, July or October. Set in Settings; used for
+  quarterly and yearly microplans.
+- **Plan week** — a Monday–Sunday week, counted in the month its Sunday falls
+  in; a week that straddles two months is Week 1 of the later one.
+- **Reviewer** — the person chosen at submission to approve a created
+  microplan or send it back. Needs `F_APPROVE_MICROPLAN`.
 - **Team code** — the identifier (usually matching a DHIS2 username) used to
   group settlement assignments into a team plan.
 - **Settlement** — the smallest geographic unit teams are assigned to;
@@ -741,7 +1000,7 @@ access appears as soon as the affected user reloads the app.
 - **Tracked entity** — the person a record is about (in immunisation, the
   child). One tracked entity has one set of bio-data attributes and many
   events, spread across the programme's stages. The map's point popup shows
-  all of it — see §5.6.
+  all of it — see §6.6.
 - **Bio data** — the tracked-entity attributes: the fields that describe the
   person rather than a single visit. Always included in the table and the
   profile, whether or not you pick them.
@@ -753,8 +1012,8 @@ access appears as soon as the affected user reloads the app.
   is its own id; a stage data element is written `stageId.dataElementId`. The
   **Data columns** picker hides this, but it is what the request is built from.
 - **dataStore** — the DHIS2 storage area (not a regular dataset) this app
-  uses to save uploaded microplans and its own access settings, shared across
-  all users of the app.
+  uses to save uploaded and created microplans and its own access settings,
+  shared across all users of the app.
 - **Authority** — a named permission in DHIS2 (e.g. `F_ADD_MICROPLAN`). You
   hold an authority through a user role; this app can also grant its own
   microplan authorities through the Settings page.
@@ -771,7 +1030,7 @@ access appears as soon as the affected user reloads the app.
   per event, enrollment, or tracked entity. The Export page's second group.
 - **Analytics endpoint** — the DHIS2 API the data is actually read from.
   Aggregated visualizations come from `/api/analytics`; line lists come from
-  the event, enrollment, or tracked-entity analytics endpoints. §6.1 has the
+  the event, enrollment, or tracked-entity analytics endpoints. §7.1 has the
   full mapping.
 - **Program stage** — a step in a tracker program (e.g. "Birth", "Postnatal
   visit"). Data elements belong to a stage, which is why enrollment and

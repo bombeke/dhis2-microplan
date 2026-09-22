@@ -5,6 +5,7 @@ import {
   DropdownButton,
   FlyoutMenu,
   IconDownload24,
+  IconEditItems24,
   IconFileDocument24,
   IconLock24,
   IconQuestion24,
@@ -24,6 +25,7 @@ import { useSearchWorker } from '../hooks/useSearchWorker';
 import { useUserPermissions } from '@/hooks/useUserPermissions';
 import { GlobalSearch } from '../components/GlobalSearch';
 import { MapPage } from './MapPage';
+import { CreateMicroplanPage } from './CreateMicroplanPage';
 import { UploadPage } from './UploadPage';
 import { FilesPage } from './FilesPage';
 import { ExportPage } from './ExportPage';
@@ -35,6 +37,8 @@ import { Footer } from './Footer';
  * Top-level shell: a branded app bar, a nav row, and a hash-routed page area.
  *
  *  #/map      — filterable coverage map (maplibre-gl layers)
+ *  #/create   — build a microplan in-app, week by week, and send it for review
+ *               (F_CREATE_MICROPLAN to edit, F_APPROVE_MICROPLAN to review)
  *  #/files    — catalogue of uploaded microplans
  *  #/upload   — dedicated upload page (parses + saves to dataStore)
  *  #/export   — analytics data download (CSV/JSON)
@@ -106,15 +110,20 @@ export const AppShell: React.FC = () => {
   const canView = permissions?.can('F_VIEW_MICROPLAN') ?? true;
   const canAdd = permissions?.can('F_ADD_MICROPLAN') ?? false;
   const canAdmin = permissions?.can('F_ADMIN_MICROPLAN') ?? false;
+  // Reviewers need the page as much as planners do: it is where they approve.
+  const canPlan = permissions?.canAny(['F_CREATE_MICROPLAN', 'F_APPROVE_MICROPLAN']) ?? false;
 
   const primaryNav: NavItem[] = useMemo(
     () => [
       { route: 'map', label: 'Map', icon: <IconWorld24 /> },
+      ...(canPlan
+        ? [{ route: 'create' as Route, label: 'Create Microplan', icon: <IconEditItems24 /> }]
+        : []),
       { route: 'files', label: 'Microplans', icon: <IconFileDocument24 /> },
       ...(canAdd ? [{ route: 'upload' as Route, label: 'Upload', icon: <IconUpload24 /> }] : []),
       { route: 'export', label: 'Export', icon: <IconDownload24 /> },
     ],
-    [canAdd]
+    [canAdd, canPlan]
   );
 
   const adminNav: NavItem[] = useMemo(
@@ -129,8 +138,9 @@ export const AppShell: React.FC = () => {
   useEffect(() => {
     if (permLoading) return;
     if (route === 'upload' && !canAdd) navigate('map');
+    if (route === 'create' && !canPlan) navigate('map');
     if (route === 'settings' && !canAdmin) navigate('map');
-  }, [permLoading, route, canAdd, canAdmin, navigate]);
+  }, [permLoading, route, canAdd, canPlan, canAdmin, navigate]);
 
   if (permLoading) {
     return (
@@ -305,6 +315,7 @@ export const AppShell: React.FC = () => {
 
       <div className="min-h-0 flex-1 overflow-auto bg-canvas">
         {route === 'map' && <MapPage program={PROGRAM} />}
+        {route === 'create' && canPlan && <CreateMicroplanPage />}
         {route === 'upload' && canAdd && <UploadPage />}
         {route === 'files' && <FilesPage />}
         {route === 'export' && <ExportPage />}
