@@ -3,7 +3,7 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import bbox from '@turf/bbox';
 import type { Settlement, FlagResult, TrackerPoint } from '../types';
-import type { Basemap, OverlayToggles } from '../lib/basemaps';
+import { basemapStyle, type Basemap, type OverlayToggles } from '../lib/basemaps';
 import type { EntityProfile } from '../lib/analyticsEnrollments';
 import type { SelectedOrgUnitLayers } from '../hooks/useSelectedOrgUnitLayers';
 import { TrackedEntityProfileCard } from './TrackedEntityProfileCard';
@@ -190,34 +190,6 @@ function upsertGeoJson(map: maplibregl.Map, id: string, features: GeoJSON.Featur
   const existing = map.getSource(id) as maplibregl.GeoJSONSource | undefined;
   if (existing) existing.setData(data);
   else map.addSource(id, { type: 'geojson', data });
-}
-
-/** Build the basemap style object for maplibre from our Basemap config. */
-function basemapStyle(basemap?: Basemap): maplibregl.StyleSpecification {
-  const cfg = basemap?.config;
-  const sources: maplibregl.StyleSpecification['sources'] = {};
-  const layers: maplibregl.LayerSpecification[] = [];
-  if (cfg) {
-    const tiles = (cfg.subdomains?.length ? cfg.subdomains : ['a', 'b', 'c']).map((s) =>
-      cfg.url.replace('{s}', s)
-    );
-    sources.basemap = {
-      type: 'raster',
-      tiles,
-      tileSize: 256,
-      attribution: cfg.attribution ?? '',
-      maxzoom: cfg.maxZoom ?? 19,
-    };
-    layers.push({ id: 'basemap', type: 'raster', source: 'basemap' });
-  }
-  return {
-    version: 8,
-    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
-    sources,
-    layers: layers.length
-      ? layers
-      : [{ id: 'bg', type: 'background', paint: { 'background-color': '#eef2f6' } }],
-  };
 }
 
 export const Dhis2Map: React.FC<{

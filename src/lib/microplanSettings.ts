@@ -30,9 +30,11 @@ import {
  *   groupAuthorities  userGroup id -> authorities granted to members of that group
  *   groupMembers      userGroup id -> extra user ids treated as members *here*
  *
- * Alongside the grants it holds one app-wide preference, `reportingCycle`:
+ * Alongside the grants it holds three app-wide preferences: `reportingCycle` —
  * which month the reporting (financial) year starts in, which decides how the
- * Create Microplan page lays out yearly and quarterly plans.
+ * Create Microplan page lays out yearly and quarterly plans — `gps`, the
+ * Manage Settlements switches (see GpsSettings below), and `duplicates`, the
+ * Manage Duplicates detection attributes and switches (DuplicateSettings).
  *
  * `groupMembers` lets an admin put a user into a microplan group without
  * touching DHIS2 group metadata (again, an authority they may not have). Real
@@ -82,7 +84,62 @@ export const MICROPLAN_AUTHORITIES: AuthorityDescriptor[] = [
   {
     value: 'F_READ_GPS_MICROPLAN',
     label: 'Read GPS coordinates',
-    description: 'See raw event coordinates and out-of-bounds flags on the map.',
+    description:
+      'See raw event coordinates and out-of-bounds flags on the map, and open Manage Settlements read-only.',
+  },
+  {
+    value: 'F_CREATE_GPS_MICROPLAN',
+    label: 'Edit settlement GPS',
+    description:
+      'Add or correct settlement coordinates and polygons on Manage Settlements, save them and submit them for review — within your data capture org units.',
+  },
+  {
+    value: 'F_APPROVE_GPS_MICROPLAN',
+    label: 'Review settlement GPS',
+    description:
+      'Accept or reject settlement coordinates, add review notes, approve or send back submissions and sync approved updates — within your data capture org units.',
+  },
+  {
+    value: 'F_VIEW_GPS_ALL_MICROPLAN',
+    label: 'View all settlement GPS',
+    description:
+      'See settlements outside your data capture org units on Manage Settlements. Only takes effect while "Allow to view all GPS places" is on.',
+  },
+  {
+    value: 'F_CREATE_GPS_ALL_MICROPLAN',
+    label: 'Edit all settlement GPS',
+    description:
+      'Edit settlements outside your data capture org units. Only takes effect while "Allow to create all GPS places" is on.',
+  },
+  {
+    value: 'F_APPROVE_GPS_ALL_MICROPLAN',
+    label: 'Review all settlement GPS',
+    description:
+      'Review settlements outside your data capture org units. Only takes effect while "Allow to approve all GPS places" is on.',
+  },
+  {
+    value: 'F_REVIEW_DUPLICATES_MICROPLAN',
+    label: 'Review duplicates',
+    description:
+      'Open Manage Duplicates, view duplicate profiles and prepare merges for approval — within your data capture org units.',
+  },
+  {
+    value: 'F_APPROVE_DUPLICATES_MICROPLAN',
+    label: 'Approve duplicates',
+    description:
+      'Accept a prepared merge (saves it to DHIS2 and deletes the duplicate) or reject it — within your data capture org units.',
+  },
+  {
+    value: 'F_REVIEW_DUPLICATES_ALL_MICROPLAN',
+    label: 'Review all duplicates',
+    description:
+      'Review duplicates outside your data capture org units. Only takes effect while "Allow to review all duplicates" is on.',
+  },
+  {
+    value: 'F_APPROVE_DUPLICATES_ALL_MICROPLAN',
+    label: 'Approve all duplicates',
+    description:
+      'Approve merges outside your data capture org units. Only takes effect while "Allow to create/approve all duplicates" is on.',
   },
   {
     value: 'F_ADMIN_MICROPLAN',
@@ -98,6 +155,105 @@ const AUTHORITY_LABELS = new Map(MICROPLAN_AUTHORITIES.map((a) => [a.value, a.la
 /** Human label for an authority string, falling back to the string itself. */
 export const authorityLabel = (value: string) => AUTHORITY_LABELS.get(value) ?? value;
 
+/**
+ * Manage Settlements preferences.
+ *
+ * The three `allow…All` switches are the second key of a two-key lock: the
+ * matching F_*_GPS_ALL_MICROPLAN authority lifts the data-capture org-unit
+ * restriction only while its switch is on, so an administrator can suspend
+ * country-wide editing without touching a single user role.
+ *
+ * The settlements service only knows place *names*, so the app has to know
+ * which DHIS2 hierarchy level holds states, LGAs and wards to translate an org
+ * unit into a settlement filter. `syncEndpoint` is where approved updates are
+ * posted; empty means "not available yet" and the Sync button says so.
+ */
+export interface GpsSettings {
+  allowViewAll: boolean;
+  allowCreateAll: boolean;
+  allowApproveAll: boolean;
+  stateLevel: number;
+  lgaLevel: number;
+  wardLevel: number;
+  syncEndpoint: string;
+}
+
+export const DEFAULT_GPS_SETTINGS: GpsSettings = {
+  allowViewAll: false,
+  allowCreateAll: false,
+  allowApproveAll: false,
+  stateLevel: 2,
+  lgaLevel: 3,
+  wardLevel: 4,
+  syncEndpoint: '',
+};
+
+function normaliseGps(raw: unknown): GpsSettings {
+  const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
+  const level = (v: unknown, d: number) =>
+    typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 10 ? v : d;
+  const d = DEFAULT_GPS_SETTINGS;
+  return {
+    allowViewAll: bool(src.allowViewAll, d.allowViewAll),
+    allowCreateAll: bool(src.allowCreateAll, d.allowCreateAll),
+    allowApproveAll: bool(src.allowApproveAll, d.allowApproveAll),
+    stateLevel: level(src.stateLevel, d.stateLevel),
+    lgaLevel: level(src.lgaLevel, d.lgaLevel),
+    wardLevel: level(src.wardLevel, d.wardLevel),
+    syncEndpoint: typeof src.syncEndpoint === 'string' ? src.syncEndpoint.trim() : '',
+  };
+}
+
+/**
+ * Manage Duplicates preferences.
+ *
+ * `attributes` are the tracked-entity attributes whose values, taken together,
+ * identify a person: two records with the same (normalised) value for every
+ * one of them are reported as duplicates. `programId` is the programme the
+ * page opens on and the one the attribute picker lists attributes from.
+ *
+ * The two `allow…All` switches pair with F_REVIEW_DUPLICATES_ALL_MICROPLAN and
+ * F_APPROVE_DUPLICATES_ALL_MICROPLAN exactly as the GPS switches do: both keys
+ * are needed to go beyond the data capture org units.
+ *
+ * `shardLevel` is the hierarchy level duplicate records are grouped by in the
+ * dataStore (one key per org unit at that level), so that reviewers in
+ * different districts never write the same key.
+ */
+export interface DuplicateSettings {
+  programId: string;
+  attributes: string[];
+  allowReviewAll: boolean;
+  allowApproveAll: boolean;
+  shardLevel: number;
+}
+
+export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
+  programId: '',
+  attributes: [],
+  allowReviewAll: false,
+  allowApproveAll: false,
+  shardLevel: 3,
+};
+
+function normaliseDuplicates(raw: unknown): DuplicateSettings {
+  const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const d = DEFAULT_DUPLICATE_SETTINGS;
+  return {
+    programId: typeof src.programId === 'string' ? src.programId : d.programId,
+    attributes: Array.isArray(src.attributes)
+      ? Array.from(new Set(src.attributes.filter((x): x is string => typeof x === 'string' && x.length > 0)))
+      : [],
+    allowReviewAll: typeof src.allowReviewAll === 'boolean' ? src.allowReviewAll : d.allowReviewAll,
+    allowApproveAll: typeof src.allowApproveAll === 'boolean' ? src.allowApproveAll : d.allowApproveAll,
+    shardLevel:
+      typeof src.shardLevel === 'number' && Number.isInteger(src.shardLevel) && src.shardLevel >= 1 && src.shardLevel <= 10
+        ? src.shardLevel
+        : d.shardLevel,
+  };
+}
+
 export interface MicroplanSettings {
   /** Schema version, so a future migration can tell old payloads apart. */
   version: number;
@@ -108,6 +264,10 @@ export interface MicroplanSettings {
   groupMembers: Record<string, string[]>;
   /** first month of the reporting year — JANUARY is the calendar year */
   reportingCycle: ReportingCycle;
+  /** Manage Settlements preferences */
+  gps: GpsSettings;
+  /** Manage Duplicates preferences */
+  duplicates: DuplicateSettings;
 }
 
 export const SETTINGS_VERSION = 1;
@@ -120,6 +280,8 @@ export const emptySettings = (): MicroplanSettings => ({
   groupAuthorities: {},
   groupMembers: {},
   reportingCycle: DEFAULT_REPORTING_CYCLE,
+  gps: { ...DEFAULT_GPS_SETTINGS },
+  duplicates: { ...DEFAULT_DUPLICATE_SETTINGS, attributes: [] },
 });
 
 /**
@@ -156,6 +318,8 @@ export function normaliseSettings(raw: unknown): MicroplanSettings {
     reportingCycle: isReportingCycle(src.reportingCycle)
       ? src.reportingCycle
       : DEFAULT_REPORTING_CYCLE,
+    gps: normaliseGps(src.gps),
+    duplicates: normaliseDuplicates(src.duplicates),
   };
 }
 

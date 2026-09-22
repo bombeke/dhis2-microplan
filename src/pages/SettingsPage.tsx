@@ -6,6 +6,8 @@ import {
   ButtonStrip,
   CircularLoader,
   IconCalendar24,
+  IconCopy24,
+  IconLocation24,
   IconLock24,
   IconSettings24,
   IconUser24,
@@ -29,6 +31,8 @@ import { RoleAuthorityTable } from '../components/settings/RoleAuthorityTable';
 import { GroupAccessPanel } from '../components/settings/GroupAccessPanel';
 import { AccessSummary } from '../components/settings/AccessSummary';
 import { ReportingCyclePanel } from '../components/settings/ReportingCyclePanel';
+import { GpsSettingsPanel } from '../components/settings/GpsSettingsPanel';
+import { DuplicateSettingsPanel } from '../components/settings/DuplicateSettingsPanel';
 
 /**
  * Administration page, reachable only with F_ADMIN_MICROPLAN (or ALL).
@@ -45,12 +49,14 @@ import { ReportingCyclePanel } from '../components/settings/ReportingCyclePanel'
  * honest.
  */
 
-type Section = 'roles' | 'groups' | 'cycle' | 'access';
+type Section = 'roles' | 'groups' | 'cycle' | 'gps' | 'duplicates' | 'access';
 
 const SECTIONS: { id: Section; label: string; icon: React.ReactElement }[] = [
   { id: 'roles', label: 'Role authorities', icon: <IconLock24 /> },
   { id: 'groups', label: 'User groups', icon: <IconUserGroup24 /> },
   { id: 'cycle', label: 'Reporting cycle', icon: <IconCalendar24 /> },
+  { id: 'gps', label: 'GPS places', icon: <IconLocation24 /> },
+  { id: 'duplicates', label: 'Duplicates', icon: <IconCopy24 /> },
   { id: 'access', label: 'Your access', icon: <IconUser24 /> },
 ];
 
@@ -66,6 +72,12 @@ const fingerprint = (s: MicroplanSettings): string => {
     maps(s.groupAuthorities),
     maps(s.groupMembers),
     s.reportingCycle,
+    s.gps,
+    [...s.duplicates.attributes].sort(),
+    s.duplicates.programId,
+    s.duplicates.allowReviewAll,
+    s.duplicates.allowApproveAll,
+    s.duplicates.shardLevel,
   ]);
 };
 
@@ -213,7 +225,8 @@ export const SettingsPage: React.FC = () => {
             Grant microplan authorities to DHIS2 user roles and user groups when editing
             the roles themselves isn't an option. These grants are additive — they never
             remove access someone already has in DHIS2. The reporting cycle sets how
-            microplan years and quarters are counted.
+            microplan years and quarters are counted, GPS places controls Manage
+            Settlements, and Duplicates controls Manage Duplicates.
           </p>
         </div>
         <ButtonStrip>
@@ -294,6 +307,22 @@ export const SettingsPage: React.FC = () => {
             <ReportingCyclePanel
               value={draft.reportingCycle}
               onChange={(reportingCycle) => setDraft((d) => ({ ...d, reportingCycle }))}
+              disabled={save.isPending}
+            />
+          )}
+
+          {section === 'gps' && (
+            <GpsSettingsPanel
+              value={draft.gps}
+              onChange={(gps) => setDraft((d) => ({ ...d, gps }))}
+              disabled={save.isPending}
+            />
+          )}
+
+          {section === 'duplicates' && (
+            <DuplicateSettingsPanel
+              value={draft.duplicates}
+              onChange={(duplicates) => setDraft((d) => ({ ...d, duplicates }))}
               disabled={save.isPending}
             />
           )}

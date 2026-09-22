@@ -7,10 +7,12 @@ import {
   IconDownload24,
   IconEditItems24,
   IconFileDocument24,
+  IconLocation24,
   IconLock24,
   IconQuestion24,
   IconSettings24,
   IconUpload24,
+  IconUserGroup24,
   IconWorld24,
   MenuDivider,
   MenuItem,
@@ -23,9 +25,13 @@ import {
 import { useRoute, type Route } from '../hooks/useRoute';
 import { useSearchWorker } from '../hooks/useSearchWorker';
 import { useUserPermissions } from '@/hooks/useUserPermissions';
+import { GPS_VIEW_AUTHORITIES } from '@/hooks/useManageSettlements';
+import { DUPLICATE_AUTHORITIES } from '@/hooks/useManageDuplicates';
 import { GlobalSearch } from '../components/GlobalSearch';
 import { MapPage } from './MapPage';
 import { CreateMicroplanPage } from './CreateMicroplanPage';
+import { ManageSettlementsPage } from './ManageSettlementsPage';
+import { ManageDuplicatesPage } from './ManageDuplicatesPage';
 import { UploadPage } from './UploadPage';
 import { FilesPage } from './FilesPage';
 import { ExportPage } from './ExportPage';
@@ -39,6 +45,10 @@ import { Footer } from './Footer';
  *  #/map      — filterable coverage map (maplibre-gl layers)
  *  #/create   — build a microplan in-app, week by week, and send it for review
  *               (F_CREATE_MICROPLAN to edit, F_APPROVE_MICROPLAN to review)
+ *  #/settlements — check and correct settlement GPS/polygons, review, sync
+ *               (F_READ_GPS / F_CREATE_GPS / F_APPROVE_GPS _MICROPLAN)
+ *  #/duplicates — find, compare and merge duplicate tracked entities
+ *               (F_REVIEW_DUPLICATES / F_APPROVE_DUPLICATES _MICROPLAN)
  *  #/files    — catalogue of uploaded microplans
  *  #/upload   — dedicated upload page (parses + saves to dataStore)
  *  #/export   — analytics data download (CSV/JSON)
@@ -112,6 +122,8 @@ export const AppShell: React.FC = () => {
   const canAdmin = permissions?.can('F_ADMIN_MICROPLAN') ?? false;
   // Reviewers need the page as much as planners do: it is where they approve.
   const canPlan = permissions?.canAny(['F_CREATE_MICROPLAN', 'F_APPROVE_MICROPLAN']) ?? false;
+  const canSettlements = permissions?.canAny(GPS_VIEW_AUTHORITIES) ?? false;
+  const canDuplicates = permissions?.canAny(DUPLICATE_AUTHORITIES) ?? false;
 
   const primaryNav: NavItem[] = useMemo(
     () => [
@@ -119,11 +131,17 @@ export const AppShell: React.FC = () => {
       ...(canPlan
         ? [{ route: 'create' as Route, label: 'Create Microplan', icon: <IconEditItems24 /> }]
         : []),
+      ...(canSettlements
+        ? [{ route: 'settlements' as Route, label: 'Manage Settlements', icon: <IconLocation24 /> }]
+        : []),
+      ...(canDuplicates
+        ? [{ route: 'duplicates' as Route, label: 'Manage Duplicates', icon: <IconUserGroup24 /> }]
+        : []),
       { route: 'files', label: 'Microplans', icon: <IconFileDocument24 /> },
       ...(canAdd ? [{ route: 'upload' as Route, label: 'Upload', icon: <IconUpload24 /> }] : []),
       { route: 'export', label: 'Export', icon: <IconDownload24 /> },
     ],
-    [canAdd, canPlan]
+    [canAdd, canPlan, canSettlements, canDuplicates]
   );
 
   const adminNav: NavItem[] = useMemo(
@@ -139,8 +157,10 @@ export const AppShell: React.FC = () => {
     if (permLoading) return;
     if (route === 'upload' && !canAdd) navigate('map');
     if (route === 'create' && !canPlan) navigate('map');
+    if (route === 'settlements' && !canSettlements) navigate('map');
+    if (route === 'duplicates' && !canDuplicates) navigate('map');
     if (route === 'settings' && !canAdmin) navigate('map');
-  }, [permLoading, route, canAdd, canPlan, canAdmin, navigate]);
+  }, [permLoading, route, canAdd, canPlan, canSettlements, canDuplicates, canAdmin, navigate]);
 
   if (permLoading) {
     return (
@@ -217,82 +237,70 @@ export const AppShell: React.FC = () => {
     // min-h-screen + flex-col so the footer sits at the bottom on short pages
     // but is pushed down by long ones (no fixed positioning over the map).
     <div className="flex min-h-screen flex-col">
-      <header className={barCls}>
-        <Brand />
-        <div className="flex-1" />
-        {/* From `md` up the settlement search sits in the bar; below that the
-            bar has no room for it and it moves to its own row under the tabs,
-            where it gets the full width a search field actually needs. */}
-        {route === 'map' && (
-          <div className="hidden md:block">
-            <GlobalSearch worker={searchWorker} />
-          </div>
-        )}
-        {/* Icon-only, with `title`/`aria-label` rather than a <Tooltip>: the
-            tooltip's node form wraps its child in a focusable span, which would
-            put a second, empty tab stop in front of the button. */}
-        <Button
-          small
-          secondary
-          icon={<IconQuestion24 />}
-          className={route === 'guide' ? 'is-active' : undefined}
-          title="User guide"
-          aria-label="User guide"
-          aria-current={route === 'guide' ? 'page' : undefined}
-          onClick={() => navigate('guide')}
-        />
-        {permissions && (
-          // The avatar sits beside the trigger rather than inside it:
-          // UserAvatar renders a <div>, which isn't valid content for the
-          // <button> DropdownButton wraps its children in.
-          <div
-            className="flex min-w-0 items-center gap-2 [&_[data-test='dhis2-uicore-dropdownbutton-toggle']]:max-w-[13rem] [&_[data-test='dhis2-uicore-dropdownbutton-toggle']]:truncate"
-            title={permissions.username}
-          >
-            <UserAvatar small name={permissions.displayName} />
-            {/* One button, with the *label* responsive rather than the button:
-                two DropdownButtons sharing `menuOpen` would both portal their
-                flyout to the body when open, and `display:none` on a wrapper
-                doesn't reach a portal — so the hidden one's menu would appear
-                too. On a narrow bar the avatar carries the identity and the
-                trigger is just the caret. */}
-            <DropdownButton
-              small
-              secondary
-              open={menuOpen}
-              onClick={({ open }: { open: boolean }) => setMenuOpen(open)}
-              component={userMenu}
+      {/* The app bar and the nav row stick as one unit. Two separately sticky
+          elements need the nav's offset to equal the bar's height exactly, and
+          the bar's height isn't fixed (it grows when its contents wrap), so the
+          nav would slide under it. One wrapper can't drift. */}
+      <div className="sticky top-0 z-30 shadow-[0_1px_0_var(--color-line)]">
+        <header className={barCls}>
+          <Brand />
+          <div className="flex-1" />
+          {/* From `md` up the settlement search sits in the bar; below that the
+              bar has no room for it and it moves to its own row under the tabs,
+              where it gets the full width a search field actually needs. */}
+          {route === 'map' && (
+            <div className="hidden md:block">
+              <GlobalSearch worker={searchWorker} />
+            </div>
+          )}
+          {/* Icon-only, with `title`/`aria-label` rather than a <Tooltip>: the
+              tooltip's node form wraps its child in a focusable span, which would
+              put a second, empty tab stop in front of the button. */}
+          <Button
+            small
+            secondary
+            icon={<IconQuestion24 />}
+            className={route === 'guide' ? 'is-active' : undefined}
+            title="User guide"
+            aria-label="User guide"
+            aria-current={route === 'guide' ? 'page' : undefined}
+            onClick={() => navigate('guide')}
+          />
+          {permissions && (
+            // The avatar sits beside the trigger rather than inside it:
+            // UserAvatar renders a <div>, which isn't valid content for the
+            // <button> DropdownButton wraps its children in.
+            <div
+              className="flex min-w-0 items-center gap-2 [&_[data-test='dhis2-uicore-dropdownbutton-toggle']]:max-w-[13rem] [&_[data-test='dhis2-uicore-dropdownbutton-toggle']]:truncate"
+              title={permissions.username}
             >
-              <span className="hidden sm:inline">{permissions.displayName}</span>
-            </DropdownButton>
-          </div>
-        )}
-      </header>
-
-      <nav
-        className="sticky top-bar z-20 flex items-stretch justify-between gap-4 overflow-x-auto border-b border-line bg-panel px-2 sm:px-4 [&_[data-test='dhis2-uicore-tab']]:border-b-transparent"
-        aria-label="Main"
-      >
-        <div className="flex min-w-0">
-          <TabBar>
-            {primaryNav.map((item) => (
-              <Tab
-                key={item.route}
-                icon={item.icon}
-                selected={route === item.route}
-                onClick={() => navigate(item.route)}
+              <UserAvatar small name={permissions.displayName} />
+              {/* One button, with the *label* responsive rather than the button:
+                  two DropdownButtons sharing `menuOpen` would both portal their
+                  flyout to the body when open, and `display:none` on a wrapper
+                  doesn't reach a portal — so the hidden one's menu would appear
+                  too. On a narrow bar the avatar carries the identity and the
+                  trigger is just the caret. */}
+              <DropdownButton
+                small
+                secondary
+                open={menuOpen}
+                onClick={({ open }: { open: boolean }) => setMenuOpen(open)}
+                component={userMenu}
               >
-                {item.label}
-              </Tab>
-            ))}
-          </TabBar>
-        </div>
-        {/* An empty TabBar still draws its rule and padding, so the whole
-            group is dropped rather than rendered empty for non-administrators. */}
-        {adminNav.length > 0 && (
-          <div className="flex min-w-0 ms-auto">
+                <span className="hidden sm:inline">{permissions.displayName}</span>
+              </DropdownButton>
+            </div>
+          )}
+        </header>
+
+        <nav
+          className="relative flex items-stretch justify-between gap-4 overflow-x-auto border-b border-line bg-panel px-2 sm:px-4 [&_[data-test='dhis2-uicore-tab']]:border-b-transparent"
+          aria-label="Main"
+        >
+          <div className="flex min-w-0">
             <TabBar>
-              {adminNav.map((item) => (
+              {primaryNav.map((item) => (
                 <Tab
                   key={item.route}
                   icon={item.icon}
@@ -304,8 +312,26 @@ export const AppShell: React.FC = () => {
               ))}
             </TabBar>
           </div>
-        )}
-      </nav>
+          {/* An empty TabBar still draws its rule and padding, so the whole
+              group is dropped rather than rendered empty for non-administrators. */}
+          {adminNav.length > 0 && (
+            <div className="flex min-w-0 ms-auto">
+              <TabBar>
+                {adminNav.map((item) => (
+                  <Tab
+                    key={item.route}
+                    icon={item.icon}
+                    selected={route === item.route}
+                    onClick={() => navigate(item.route)}
+                  >
+                    {item.label}
+                  </Tab>
+                ))}
+              </TabBar>
+            </div>
+          )}
+        </nav>
+      </div>
 
       {route === 'map' && (
         <div className="border-b border-line bg-panel px-3 py-2 md:hidden">
@@ -316,6 +342,8 @@ export const AppShell: React.FC = () => {
       <div className="min-h-0 flex-1 overflow-auto bg-canvas">
         {route === 'map' && <MapPage program={PROGRAM} />}
         {route === 'create' && canPlan && <CreateMicroplanPage />}
+        {route === 'settlements' && canSettlements && <ManageSettlementsPage />}
+        {route === 'duplicates' && canDuplicates && <ManageDuplicatesPage />}
         {route === 'upload' && canAdd && <UploadPage />}
         {route === 'files' && <FilesPage />}
         {route === 'export' && <ExportPage />}

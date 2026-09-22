@@ -201,7 +201,10 @@ src/
   workers/    search.worker (FlexSearch + IndexedDB)
   components/ UploadPanel, TeamWardList, Dhis2Map, MapFilterBar, GroupedMultiSelect,
               TrackedEntityProfileCard, MapFloatingCard, AnalyticsDataPanel,
-              LayerControl, GlobalSearch, ExportDateRange, settings/ (admin screens)
+              LayerControl, GlobalSearch, ExportDateRange, settings/ (admin screens),
+              create/ (Create Microplan), settlements/ (Manage Settlements grid,
+              map picker, dialogs), duplicates/ (Manage Duplicates grid,
+              profile and merge dialogs)
   pages/      AppShell (orchestration), Map/Files/Upload/Export/Guide/Settings pages
   docs/       USER_GUIDE.md (rendered in-app from the app bar's ? button)
   store/      Zustand store
@@ -217,7 +220,12 @@ pnpm-workspace.yaml          pnpm 11 settings (hoist, engine, build approvals)
 
 Microplan authorities (`F_VIEW_MICROPLAN`, `F_ADD_MICROPLAN`,
 `F_DELETE_MICROPLAN`, `F_DOWNLOAD_MICROPLAN`, `F_READ_GPS_MICROPLAN`,
-`F_ADMIN_MICROPLAN`, `F_CREATE_MICROPLAN`, `F_APPROVE_MICROPLAN`) are declared as `customAuthorities` in `d2.config.js` and
+`F_ADMIN_MICROPLAN`, `F_CREATE_MICROPLAN`, `F_APPROVE_MICROPLAN`, and for
+Manage Settlements `F_CREATE_GPS_MICROPLAN`, `F_APPROVE_GPS_MICROPLAN`,
+`F_VIEW_GPS_ALL_MICROPLAN`, `F_CREATE_GPS_ALL_MICROPLAN`,
+`F_APPROVE_GPS_ALL_MICROPLAN`, and for Manage Duplicates
+`F_REVIEW_DUPLICATES_MICROPLAN`, `F_APPROVE_DUPLICATES_MICROPLAN`,
+`F_REVIEW_DUPLICATES_ALL_MICROPLAN`, `F_APPROVE_DUPLICATES_ALL_MICROPLAN`) are declared as `customAuthorities` in `d2.config.js` and
 resolved by `hooks/useUserPermissions.ts` in two layers:
 
 1. The user's real DHIS2 authorities from `/api/me` (`ALL` short-circuits
@@ -232,9 +240,35 @@ authority DHIS2 grants, so the DHIS2 permission model stays authoritative. It
 exists because granting a custom authority the proper way needs rights over
 DHIS2 user roles that microplan programme staff often don't hold. See
 `lib/microplanSettings.ts` for the stored shape and `src/docs/USER_GUIDE.md`
-§8 for the administrator-facing documentation. The Create Microplan workflow
+§10 for the administrator-facing documentation. The Create Microplan workflow
 (draft → submitted → approved / sent back) is in `lib/createdPlanStore.ts`
 and §4 of the guide.
+
+Manage Settlements (`pages/ManageSettlementsPage.tsx`) reads the
+`ng_settlements` register (`lib/settlementRegistry.ts`) and stages GPS/polygon
+changes in `dataStore/microplan/gps:<state>:<lga>` shards
+(`lib/gpsEditStore.ts`: draft → submitted → approved / rejected / sent back,
+then synced with audit fields to the endpoint set in Settings → GPS places).
+Viewing, editing and reviewing are limited to the user's data capture org
+units unless an `F_*_GPS_ALL_MICROPLAN` authority *and* its Settings switch
+allow more (`hooks/useManageSettlements.ts`). See §5 of the guide.
+
+Manage Duplicates (`pages/ManageDuplicatesPage.tsx`) scans
+`/api/tracker/trackedEntities` under an org unit and puts records whose
+duplicate-detection attributes (Settings → Duplicates) all match
+into groups (`lib/duplicateStore.ts`); the scan result is cached in
+IndexedDB. Reviewers retain records that aren't duplicates (a per-record mark
+every later scan honours) and merge the rest of a group by hand
+(`lib/duplicateMerge.ts`: every record side by side, any record's value or a
+custom one per field, events clustered into visits per stage). Merges are
+stored for approval with snapshots of every record in
+`dataStore/microplan/dup:<program>:<orgUnit>` shards, and on acceptance saved
+with `POST /api/tracker?importStrategy=CREATE_AND_UPDATE` before each removed
+record is deleted with `importStrategy=DELETE`. Rejected merges stay flagged
+as duplicates. Reviewing and approving are limited to the user's data
+capture org units unless an `F_*_DUPLICATES_ALL_MICROPLAN` authority *and*
+its Settings switch allow more (`hooks/useManageDuplicates.ts`). See §6 of
+the guide.
 
 Bootstrapping is deliberately not possible from inside the app: the first
 `F_ADMIN_MICROPLAN` has to come from a DHIS2 user role.

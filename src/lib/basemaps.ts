@@ -1,3 +1,5 @@
+import type maplibregl from 'maplibre-gl';
+
 /**
  * Basemap registry — mirrors the default basemap choices offered by the DHIS2
  * Maps web app (OSM, OSM Light, OSM Dark, Bing-style imagery via Esri, plus a
@@ -25,7 +27,7 @@ export const BASEMAPS: Basemap[] = [
     config: {
       url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
       attribution: '© OpenStreetMap contributors',
-      subdomains: ['a', 'b', 'c', 'd'],
+      subdomains: ['a', 'b', 'c'],
       maxZoom: 19,
     },
     thumbnailColor: '#e8e8e8',
@@ -98,3 +100,31 @@ export const DEFAULT_OVERLAYS: OverlayToggles = {
   boundaries: true,
   settlementBoundaries: true,
 };
+
+/** Build the basemap style object for maplibre from our Basemap config. */
+export function basemapStyle(basemap?: Basemap): maplibregl.StyleSpecification {
+  const cfg = basemap?.config;
+  const sources: maplibregl.StyleSpecification['sources'] = {};
+  const layers: maplibregl.LayerSpecification[] = [];
+  if (cfg) {
+    const tiles = (cfg.subdomains?.length ? cfg.subdomains : ['a', 'b', 'c']).map((s) =>
+      cfg.url.replace('{s}', s)
+    );
+    sources.basemap = {
+      type: 'raster',
+      tiles,
+      tileSize: 256,
+      attribution: cfg.attribution ?? '',
+      maxzoom: cfg.maxZoom ?? 19,
+    };
+    layers.push({ id: 'basemap', type: 'raster', source: 'basemap' });
+  }
+  return {
+    version: 8,
+    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+    sources,
+    layers: layers.length
+      ? layers
+      : [{ id: 'bg', type: 'background', paint: { 'background-color': '#eef2f6' } }],
+  };
+}
