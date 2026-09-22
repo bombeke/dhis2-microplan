@@ -1,5 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useDataEngine } from '@dhis2/app-runtime';
+import { useQueryClient } from '@tanstack/react-query';
 import {
+  prefetchOrgUnitChildren,
+  prefetchOrgUnitGrandchildren,
   useOrgUnitRoots,
   useOrgUnitChildren,
   useOrgUnitSearch,
@@ -29,9 +33,20 @@ import {
  * is no upfront wait. Selecting any node filters the map to it and its
  * descendants (same downstream behaviour as before).
  *
+ * Perceived speed: the roots and the level below them are requested as soon as
+ * the picker mounts (before it is opened), a lone root is expanded
+ * automatically, every opened level prefetches the level beneath it in one
+ * batched request, and hovering a node warms its children. Levels are also
+ * persisted across sessions (see hooks/useOrgUnits.ts), and a node with a very
+ * large number of children renders them in pages.
+ *
  * The heavy whole-hierarchy hook (useOrgUnitTree) is intentionally left in place
  * for other use cases — this component simply doesn't use it.
  */
+
+/** Children rendered per node before a "Show more" row. */
+const CHILD_PAGE = 200;
+
 export const OrgUnitLazyTreeSelect: React.FC<{
   value: string | null;
   onChange: (id: string | null) => void;
@@ -41,13 +56,37 @@ export const OrgUnitLazyTreeSelect: React.FC<{
   const [debounced, setDebounced] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const boxRef = useRef<HTMLDivElement>(null);
+  const qc = useQueryClient();
+  const engine = useDataEngine();
 
-  const { data: roots = [], isLoading: rootsLoading } = useOrgUnitRoots();
+  const { data: roots = [], isPending: rootsLoading } = useOrgUnitRoots();
   const { data: searchHits = [], isFetching: searching } = useOrgUnitSearch(debounced, open);
   // resolve the selected node's label without loading the tree
   const { data: byId = {} } = useOrgUnitsByIds(value ? [value] : []);
 
   const selectedName = value ? byId[value]?.name ?? '…' : 'All org units';
+  const selectedPath = value ? byId[value]?.path : undefined;
+
+  // Warm the level under the roots straight away (one request), so the first
+  // open already shows two levels. A lone root (the usual national node) is
+  // expanded by default.
+  const autoExpanded = useRef(false);
+  useEffect(() => {
+    if (roots.length === 0) return;
+    void prefetchOrgUnitGrandchildren(qc, engine, roots);
+    if (!autoExpanded.current && roots.length === 1) {
+      autoExpanded.current = true;
+      setExpanded((prev) => new Set(prev).add(roots[0].id));
+    }
+  }, [roots, qc, engine]);
+
+  // Reveal the current selection: expand its ancestors (their children load
+  // in parallel, each branch fetching its own level).
+  useEffect(() => {
+    if (!selectedPath) return;
+    const ancestors = selectedPath.split('/').filter(Boolean).slice(0, -1);
+    if (ancestors.length) setExpanded((prev) => new Set([...prev, ...ancestors]));
+  }, [selectedPath]);
 
   // debounce the search box (250ms) so typing doesn't spam the API
   useEffect(() => {
@@ -172,10 +211,25 @@ const LazyBranch: React.FC<{
   const isOpen = expanded.has(node.id);
   const hasChildren = !node.leaf && node.childCount !== 0;
   // only fetch children while this node is open
-  const { data: children = [], isFetching } = useOrgUnitChildren(node.id, isOpen && hasChildren);
+  const { data: children = [], isPending } = useOrgUnitChildren(node.id, isOpen && hasChildren);
+  const [shown, setShown] = useState(CHILD_PAGE);
+  const qc = useQueryClient();
+  const engine = useDataEngine();
+
+  // one level ahead: once this node's children are visible, fetch all of
+  // their children in a single batched request
+  useEffect(() => {
+    if (isOpen && children.length) {
+      void prefetchOrgUnitGrandchildren(qc, engine, children.slice(0, shown));
+    }
+  }, [isOpen, children, shown, qc, engine]);
+
+  const warm = () => {
+    if (hasChildren && !isOpen) void prefetchOrgUnitChildren(qc, engine, node.id);
+  };
 
   return (
-    <div style={{ paddingInlineStart: depth * 12 }}>
+    <div style={{ paddingInlineStart: depth * 12 }} onMouseEnter={warm} onFocus={warm}>
       <div className="flex items-center gap-0.5">
         {hasChildren ? (
           <button
@@ -203,7 +257,7 @@ const LazyBranch: React.FC<{
       </div>
       {isOpen && (
         <>
-          {isFetching && (
+          {isPending && (
             <div
               className="py-1 text-xs italic text-muted"
               style={{ paddingInlineStart: (depth + 1) * 12 }}
@@ -211,7 +265,7 @@ const LazyBranch: React.FC<{
               Loading…
             </div>
           )}
-          {children.map((c) => (
+          {children.slice(0, shown).map((c) => (
             <LazyBranch
               key={c.id}
               node={c}
@@ -222,6 +276,17 @@ const LazyBranch: React.FC<{
               onChoose={onChoose}
             />
           ))}
+          {children.length > shown && (
+            <button
+              type="button"
+              className="w-full py-1 text-left text-xs text-accent hover:underline"
+              style={{ paddingInlineStart: (depth + 1) * 12 + 18 }}
+              onClick={() => setShown((n) => n + CHILD_PAGE)}
+            >
+              Show {Math.min(CHILD_PAGE, children.length - shown)} more of{' '}
+              {children.length - shown} remaining…
+            </button>
+          )}
         </>
       )}
     </div>

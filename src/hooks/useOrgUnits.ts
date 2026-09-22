@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
-import { useDataEngine } from '@dhis2/app-runtime';
-import { useQuery } from '@tanstack/react-query';
+import { useConfig, useDataEngine } from '@dhis2/app-runtime';
+import { useQuery, type QueryClient } from '@tanstack/react-query';
+import { readOrgUnitLevel, setOrgUnitCacheScope, writeOrgUnitLevel } from '../lib/orgUnitCache';
 
 /**
  * Retrieving 50k+ wards by State -> Ward -> facility without melting the
@@ -8,6 +9,15 @@ import { useQuery } from '@tanstack/react-query';
  * keyed and cached by parent. The UI lazily expands nodes, and the search
  * worker (FlexSearch) handles the "jump straight to a ward" case so users
  * don't have to drill manually.
+ *
+ * Speed-ups for the tree picker:
+ *  - fields are kept minimal (`children::size` only — no geometry, no `leaf`,
+ *    both of which make the server do extra work per unit);
+ *  - roots come from one `userOnly` request instead of `me` + a lookup;
+ *  - each level is persisted in localStorage (lib/orgUnitCache.ts) and served
+ *    as initialData, so repeat visits paint immediately and revalidate quietly;
+ *  - prefetchOrgUnitGrandchildren loads the *next* level for a whole set of
+ *    siblings in one request, so expanding a node is usually instant.
  */
 
 export interface OrgUnitNode {
@@ -19,70 +29,157 @@ export interface OrgUnitNode {
   geometryType?: string;
 }
 
-const fields =
-  'id,displayName,level,leaf,children::size,geometry[type]';
+type Engine = ReturnType<typeof useDataEngine>;
+
+const fields = 'id,displayName,level,children::size';
+const LEVEL_STALE = 30 * 60_000;
+const LEVEL_GC = 60 * 60_000;
+
+const childrenKey = (parentId: string | null) => ['ou-children', parentId] as const;
+
+const toNode = (o: any): OrgUnitNode => {
+  const childCount = o.children ?? o.childCount ?? 0;
+  return {
+    id: o.id,
+    displayName: o.displayName,
+    level: o.level,
+    leaf: childCount === 0,
+    childCount,
+  };
+};
+
+async function fetchChildren(engine: Engine, parentId: string): Promise<OrgUnitNode[]> {
+  const data: any = await engine.query({
+    ou: {
+      resource: 'organisationUnits',
+      params: {
+        filter: [`parent.id:eq:${parentId}`],
+        fields,
+        order: 'displayName:asc',
+        paging: 'false',
+      },
+    },
+  });
+  const nodes = (data.ou.organisationUnits ?? []).map(toNode);
+  writeOrgUnitLevel(`c:${parentId}`, nodes);
+  return nodes;
+}
+
+function useCacheScope() {
+  const { baseUrl } = useConfig();
+  setOrgUnitCacheScope(baseUrl ?? '');
+}
 
 export function useOrgUnitChildren(parentId: string | null, enabled = true) {
   const engine = useDataEngine();
+  useCacheScope();
+  // read lazily: React Query only calls these when the query is first created
+  const cached = () => (parentId ? readOrgUnitLevel(`c:${parentId}`) : undefined);
   return useQuery({
-    queryKey: ['ou-children', parentId],
+    queryKey: childrenKey(parentId),
     enabled: enabled && !!parentId,
-    staleTime: 5 * 60_000,
+    staleTime: LEVEL_STALE,
+    gcTime: LEVEL_GC,
+    initialData: () => cached()?.nodes,
+    initialDataUpdatedAt: () => cached()?.updatedAt,
+    queryFn: () => fetchChildren(engine, parentId!),
+  });
+}
+
+/** Top-level roots for the tree: the user's assigned org units, in one request. */
+export function useOrgUnitRoots() {
+  const engine = useDataEngine();
+  useCacheScope();
+  return useQuery({
+    queryKey: ['ou-roots'],
+    staleTime: LEVEL_STALE,
+    gcTime: LEVEL_GC,
+    initialData: () => readOrgUnitLevel('roots')?.nodes,
+    // roots depend on who is logged in: always revalidate cached roots once
+    initialDataUpdatedAt: 0,
     queryFn: async (): Promise<OrgUnitNode[]> => {
       const data: any = await engine.query({
         ou: {
           resource: 'organisationUnits',
-          params: {
-            filter: [`parent.id:eq:${parentId}`],
-            fields,
-            order: 'displayName:asc',
-            paging: 'false',
-          },
+          params: { userOnly: true, fields, order: 'displayName:asc', paging: 'false' },
         },
       });
-      return (data.ou.organisationUnits ?? []).map((o: any) => ({
-        id: o.id,
-        displayName: o.displayName,
-        level: o.level,
-        leaf: o.leaf,
-        childCount: o['children'] ?? o.childCount ?? 0,
-        geometryType: o.geometry?.type,
-      }));
+      const nodes = (data.ou.organisationUnits ?? []).map(toNode);
+      writeOrgUnitLevel('roots', nodes);
+      return nodes;
     },
   });
 }
 
-/** Top-level (national) roots for the tree. */
-export function useOrgUnitRoots() {
-  const engine = useDataEngine();
-  return useQuery({
-    queryKey: ['ou-roots'],
-    staleTime: 30 * 60_000,
-    queryFn: async (): Promise<OrgUnitNode[]> => {
-      const data: any = await engine.query({
-        me: { resource: 'me', params: { fields: 'organisationUnits[id,level]' } },
-      });
-      const roots = data.me.organisationUnits ?? [];
-      const detail: any = await engine.query({
-        ou: {
-          resource: 'organisationUnits',
-          params: {
-            filter: [`id:in:[${roots.map((r: any) => r.id).join(',')}]`],
-            fields,
-            paging: 'false',
-          },
-        },
-      });
-      return (detail.ou.organisationUnits ?? []).map((o: any) => ({
-        id: o.id,
-        displayName: o.displayName,
-        level: o.level,
-        leaf: o.leaf,
-        childCount: o['children'] ?? 0,
-        geometryType: o.geometry?.type,
-      }));
-    },
+/** Warm one node's children (e.g. on hover) so expanding it is instant. */
+export function prefetchOrgUnitChildren(qc: QueryClient, engine: Engine, parentId: string) {
+  return qc.prefetchQuery({
+    queryKey: childrenKey(parentId),
+    staleTime: LEVEL_STALE,
+    queryFn: () => fetchChildren(engine, parentId),
   });
+}
+
+/**
+ * Load the children of every node in `parents` in as few requests as possible
+ * (`parent.id:in:[…]`, chunked), then split the rows per parent into the same
+ * per-parent cache entries useOrgUnitChildren reads. Parents already cached and
+ * fresh, or leaves, are skipped; the combined size is capped using the known
+ * `childCount`, so a huge level is never pulled in speculatively.
+ */
+const inFlight = new Set<string>();
+
+export async function prefetchOrgUnitGrandchildren(
+  qc: QueryClient,
+  engine: Engine,
+  parents: OrgUnitNode[],
+  maxRows = 3000
+) {
+  const now = Date.now();
+  const todo: OrgUnitNode[] = [];
+  let rows = 0;
+  for (const p of parents) {
+    if (p.childCount === 0 || inFlight.has(p.id)) continue;
+    const state = qc.getQueryState(childrenKey(p.id));
+    if (state?.data && now - state.dataUpdatedAt < LEVEL_STALE) continue;
+    if (rows + p.childCount > maxRows) continue;
+    rows += p.childCount;
+    todo.push(p);
+  }
+  if (todo.length === 0) return;
+  todo.forEach((p) => inFlight.add(p.id));
+
+  try {
+    const chunkSize = 100; // keeps the id list well within URL limits
+    await Promise.all(
+      Array.from({ length: Math.ceil(todo.length / chunkSize) }, async (_, i) => {
+        const chunk = todo.slice(i * chunkSize, (i + 1) * chunkSize);
+        const data: any = await engine.query({
+          ou: {
+            resource: 'organisationUnits',
+            params: {
+              filter: [`parent.id:in:[${chunk.map((p) => p.id).join(',')}]`],
+              fields: `${fields},parent[id]`,
+              order: 'displayName:asc',
+              paging: 'false',
+            },
+          },
+        });
+        const byParent = new Map<string, OrgUnitNode[]>(chunk.map((p) => [p.id, []]));
+        for (const o of data.ou.organisationUnits ?? []) {
+          byParent.get(o.parent?.id)?.push(toNode(o));
+        }
+        for (const [parentId, nodes] of byParent) {
+          qc.setQueryData(childrenKey(parentId), nodes);
+          writeOrgUnitLevel(`c:${parentId}`, nodes);
+        }
+      })
+    );
+  } catch {
+    // speculative only — a normal fetch happens if the node is expanded
+  } finally {
+    todo.forEach((p) => inFlight.delete(p.id));
+  }
 }
 
 /**
@@ -294,7 +391,7 @@ export function useOrgUnitSearch(query: string, enabled = true) {
 export function useOrgUnitsByIds(ids: string[]) {
   const engine = useDataEngine();
   const key = ids.slice().sort().join(',');
-  return useQuery<Record<string, { id: string; name: string; level: number }>>({
+  return useQuery<Record<string, { id: string; name: string; level: number; path: string }>>({
     queryKey: ['ou-by-ids', key],
     enabled: ids.length > 0,
     staleTime: 10 * 60_000,
@@ -304,14 +401,14 @@ export function useOrgUnitsByIds(ids: string[]) {
           resource: 'organisationUnits',
           params: {
             filter: [`id:in:[${ids.join(',')}]`],
-            fields: 'id,displayName~rename(name),level',
+            fields: 'id,displayName~rename(name),level,path',
             paging: 'false',
           },
         },
       });
-      const map: Record<string, { id: string; name: string; level: number }> = {};
+      const map: Record<string, { id: string; name: string; level: number; path: string }> = {};
       for (const o of data.ou.organisationUnits ?? []) {
-        map[o.id] = { id: o.id, name: o.name ?? o.displayName, level: o.level };
+        map[o.id] = { id: o.id, name: o.name ?? o.displayName, level: o.level, path: o.path ?? '' };
       }
       return map;
     },
