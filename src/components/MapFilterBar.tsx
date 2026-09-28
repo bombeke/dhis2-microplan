@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Button, Chip, IconFilter24, Tooltip } from '@dhis2/ui';
 import { useStore } from '../store/useStore';
 import { SearchableSelect } from './SearchableSelect';
@@ -7,7 +7,7 @@ import { OrgUnitLazyTreeSelect } from './OrgUnitLazyTreeSelect';
 import { ProgramSelect } from './ProgramSelect';
 import { GroupedMultiSelect } from './GroupedMultiSelect';
 import { useProgramDimensions } from '../hooks/useProgramDimensions';
-import { useUsers } from '../hooks/useUsers';
+import { useMapTeams } from '../hooks/useUsers';
 import { usePrograms } from '../hooks/usePrograms';
 import { flattenDimensionGroups } from '../lib/programDimensions';
 import type { SearchOption } from '../hooks/useFlexFilter';
@@ -68,11 +68,29 @@ export const MapFilterBar: React.FC<{
   const { data: dimensionGroups = [], isLoading: dimsLoading } = useProgramDimensions(
     mapFilters.programId
   );
-  const { data: users = [], isLoading: usersLoading } = useUsers();
+  // "Teams": the data-view user list (fetched once, cached), narrowed in the
+  // browser to users with an org-unit path through the selected unit. Shown
+  // as "Name (username)" and searchable by either; username lives in sublabel
+  // so FlexSearch indexes it.
+  const {
+    users,
+    isLoading: usersLoading,
+    isSuccess: usersLoaded,
+  } = useMapTeams(mapFilters.orgUnitId);
   const { data: programs = [] } = usePrograms();
 
-  // "All users": everyone the current user can access, shown as "Name (username)"
-  // and searchable by either. Username lives in sublabel so FlexSearch indexes it.
+  const selectedUser = mapFilters.uploadedById
+    ? users.find((u) => u.id === mapFilters.uploadedById)
+    : undefined;
+
+  // A team picked under one org unit may not exist under the next: drop the
+  // selection once the list has loaded and no longer contains it.
+  useEffect(() => {
+    if (usersLoaded && mapFilters.uploadedById && !selectedUser) {
+      setMapFilter('uploadedById', null);
+    }
+  }, [usersLoaded, mapFilters.uploadedById, selectedUser, setMapFilter]);
+
   const userOptions: SearchOption[] = useMemo(
     () => users.map((u) => ({ id: u.id, label: u.name, sublabel: u.username })),
     [users]
@@ -104,7 +122,7 @@ export const MapFilterBar: React.FC<{
       });
     }
     if (mapFilters.uploadedById) {
-      const u = users.find((x) => x.id === mapFilters.uploadedById);
+      const u = selectedUser;
       chips.push({
         key: 'team',
         label: u ? `Team ${u.username ?? u.name}` : 'Team',
@@ -136,7 +154,7 @@ export const MapFilterBar: React.FC<{
   }, [
     mapFilters,
     programs,
-    users,
+    selectedUser,
     selectedDimensions,
     dimensionGroups,
     setMapFilter,
@@ -162,9 +180,11 @@ export const MapFilterBar: React.FC<{
         </Field>
 
         <Field label="Organisation unit" required>
+          {/* the map is an analytics view: start from the data-view org units */}
           <OrgUnitLazyTreeSelect
             value={mapFilters.orgUnitId}
             onChange={(id) => setMapFilter('orgUnitId', id)}
+            rootScope="dataView"
           />
         </Field>
 

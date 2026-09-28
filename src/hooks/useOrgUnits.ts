@@ -86,26 +86,58 @@ export function useOrgUnitChildren(parentId: string | null, enabled = true) {
   });
 }
 
-/** Top-level roots for the tree: the user's assigned org units, in one request. */
-export function useOrgUnitRoots() {
+/**
+ * Which of the user's org-unit assignments form the tree's roots:
+ *  - 'capture': their data-capture units (`userOnly`);
+ *  - 'dataView': their data-view (analytics) units, falling back to the
+ *    data-capture units when none are set (`userDataViewFallback`) — the same
+ *    scope the DHIS2 Maps app uses.
+ */
+export type OrgUnitRootScope = 'capture' | 'dataView';
+
+const rootScopeParams: Record<OrgUnitRootScope, Record<string, boolean>> = {
+  capture: { userOnly: true },
+  dataView: { userDataViewFallback: true },
+};
+
+/**
+ * Top-level roots for the tree: the user's assigned org units for `scope`, in
+ * one request. A unit that sits beneath another assigned unit is dropped,
+ * since it is already reachable from that root.
+ */
+export function useOrgUnitRoots(scope: OrgUnitRootScope = 'capture') {
   const engine = useDataEngine();
   useCacheScope();
+  const cacheKey = scope === 'capture' ? 'roots' : `roots:${scope}`;
   return useQuery({
-    queryKey: ['ou-roots'],
+    queryKey: ['ou-roots', scope],
     staleTime: LEVEL_STALE,
     gcTime: LEVEL_GC,
-    initialData: () => readOrgUnitLevel('roots')?.nodes,
+    initialData: () => readOrgUnitLevel(cacheKey)?.nodes,
     // roots depend on who is logged in: always revalidate cached roots once
     initialDataUpdatedAt: 0,
     queryFn: async (): Promise<OrgUnitNode[]> => {
       const data: any = await engine.query({
         ou: {
           resource: 'organisationUnits',
-          params: { userOnly: true, fields, order: 'displayName:asc', paging: 'false' },
+          params: {
+            ...rootScopeParams[scope],
+            fields: `${fields},path`,
+            order: 'displayName:asc',
+            paging: 'false',
+          },
         },
       });
-      const nodes = (data.ou.organisationUnits ?? []).map(toNode);
-      writeOrgUnitLevel('roots', nodes);
+      const list: any[] = data.ou.organisationUnits ?? [];
+      const ids = new Set(list.map((o) => o.id));
+      const nodes = list
+        .filter((o) =>
+          !String(o.path ?? '')
+            .split('/')
+            .some((a) => a && a !== o.id && ids.has(a))
+        )
+        .map(toNode);
+      writeOrgUnitLevel(cacheKey, nodes);
       return nodes;
     },
   });
@@ -189,7 +221,7 @@ export async function prefetchOrgUnitGrandchildren(
 export async function* streamWards(
   engine: ReturnType<typeof useDataEngine>,
   wardLevel: number,
-  pageSize = 1000
+  pageSize = 500
 ): AsyncGenerator<OrgUnitNode[]> {
   let page = 1;
   // eslint-disable-next-line no-constant-condition
@@ -242,7 +274,7 @@ const TEN_MIN = 10 * 60_000;
 
 async function fetchAllOrgUnits(
   engine: ReturnType<typeof useDataEngine>,
-  pageSize = 1000
+  pageSize = 500
 ): Promise<FlatOrgUnit[]> {
   const out: FlatOrgUnit[] = [];
   let page = 1;
@@ -343,6 +375,10 @@ export function useOrgUnitTree(enabled = true) {
  * the whole hierarchy: we ask the API for units whose name matches the query
  * (debounced by the caller), returning each with its `path` and `level` so the
  * picker can show ancestry. Only runs when the query is long enough.
+ *
+ * Results are confined to the user's roots (see useOrgUnitRoots): one request
+ * per root with `path:like:<rootId>`, so units outside the user's access are
+ * never offered. No roots → no search.
  */
 export interface OrgUnitSearchHit {
   id: string;
@@ -352,34 +388,52 @@ export interface OrgUnitSearchHit {
   parentId: string | null;
 }
 
-export function useOrgUnitSearch(query: string, enabled = true) {
+export function useOrgUnitSearch(query: string, rootIds: string[], enabled = true) {
   const engine = useDataEngine();
   const q = query.trim();
+  const roots = rootIds.slice().sort();
   return useQuery<OrgUnitSearchHit[]>({
-    queryKey: ['ou-search', q],
-    enabled: enabled && q.length >= 2,
+    queryKey: ['ou-search', q, roots.join(',')],
+    enabled: enabled && q.length >= 2 && roots.length > 0,
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,
     queryFn: async () => {
-      const data: any = await engine.query({
-        ou: {
-          resource: 'organisationUnits',
-          params: {
-            query: q,
-            fields: 'id,displayName~rename(name),level,path,parent[id]',
-            order: 'level:asc,displayName:asc',
-            pageSize: 50,
-            page: 1,
-          },
-        },
-      });
-      return (data.ou.organisationUnits ?? []).map((o: any) => ({
-        id: o.id,
-        name: o.name ?? o.displayName,
-        level: o.level,
-        path: o.path ?? '',
-        parentId: o.parent?.id ?? null,
-      }));
+      // one request per root: combining several path filters needs
+      // rootJunction=OR, which would also OR them with the name query
+      const pages = await Promise.all(
+        roots.map(async (rootId) => {
+          const data: any = await engine.query({
+            ou: {
+              resource: 'organisationUnits',
+              params: {
+                query: q,
+                filter: [`path:like:${rootId}`],
+                fields: 'id,displayName~rename(name),level,path,parent[id]',
+                order: 'level:asc,displayName:asc',
+                pageSize: 50,
+                page: 1,
+              },
+            },
+          });
+          return (data.ou.organisationUnits ?? []) as any[];
+        })
+      );
+      const byId = new Map<string, OrgUnitSearchHit>();
+      for (const o of pages.flat()) {
+        const path: string = o.path ?? '';
+        // belt and braces: keep only units at or under one of the roots
+        if (!roots.some((r) => path.split('/').includes(r))) continue;
+        byId.set(o.id, {
+          id: o.id,
+          name: o.name ?? o.displayName,
+          level: o.level,
+          path,
+          parentId: o.parent?.id ?? null,
+        });
+      }
+      return [...byId.values()]
+        .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
+        .slice(0, 50);
     },
   });
 }

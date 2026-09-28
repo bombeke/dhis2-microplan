@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useDataEngine } from '@dhis2/app-runtime';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -9,6 +9,7 @@ import {
   useOrgUnitSearch,
   useOrgUnitsByIds,
   type OrgUnitNode,
+  type OrgUnitRootScope,
 } from '../hooks/useOrgUnits';
 import {
   cn,
@@ -50,7 +51,9 @@ const CHILD_PAGE = 200;
 export const OrgUnitLazyTreeSelect: React.FC<{
   value: string | null;
   onChange: (id: string | null) => void;
-}> = ({ value, onChange }) => {
+  /** Which of the user's org-unit assignments the tree starts from. */
+  rootScope?: OrgUnitRootScope;
+}> = ({ value, onChange, rootScope = 'capture' }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
@@ -59,8 +62,13 @@ export const OrgUnitLazyTreeSelect: React.FC<{
   const qc = useQueryClient();
   const engine = useDataEngine();
 
-  const { data: roots = [], isPending: rootsLoading } = useOrgUnitRoots();
-  const { data: searchHits = [], isFetching: searching } = useOrgUnitSearch(debounced, open);
+  const { data: roots = [], isPending: rootsLoading } = useOrgUnitRoots(rootScope);
+  const rootIds = useMemo(() => roots.map((r) => r.id), [roots]);
+  const { data: searchHits = [], isFetching: searching } = useOrgUnitSearch(
+    debounced,
+    rootIds,
+    open
+  );
   // resolve the selected node's label without loading the tree
   const { data: byId = {} } = useOrgUnitsByIds(value ? [value] : []);
 

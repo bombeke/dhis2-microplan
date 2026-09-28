@@ -47,9 +47,9 @@ export const BASEMAPS: Basemap[] = [
     id: 'osmDark',
     name: 'OSM Dark',
     config: {
-      url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-      attribution: '© OpenStreetMap contributors © CARTO',
-      subdomains: ['a', 'b', 'c', 'd'],
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: '© OpenStreetMap contributors',
+      subdomains: ['a', 'b', 'c'],
       maxZoom: 19,
     },
     thumbnailColor: '#1b232d',

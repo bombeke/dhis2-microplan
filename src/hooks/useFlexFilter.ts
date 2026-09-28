@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import FlexSearch from 'flexsearch';
 
 /**
@@ -27,16 +27,17 @@ export function useFlexFilter(
   // a counter we bump to force index rebuilds on the timer
   const [refreshTick, setRefreshTick] = useState(0);
   const [query, setQuery] = useState('');
-  const indexRef = useRef<FlexSearch.Index | null>(null);
   const byId = useMemo(() => new Map(options.map((o) => [o.id, o])), [options]);
 
-  // (re)build the index when options change or the refresh timer fires
-  useEffect(() => {
+  // (re)build the index when options change or the refresh timer fires. Built
+  // during render (not in an effect) so a new options list is searched on the
+  // very render it arrives, never through the previous list's index.
+  const index = useMemo(() => {
     const idx = new FlexSearch.Index({ tokenize: 'forward', cache: true });
     for (const o of options) {
       idx.add(o.id as unknown as number, `${o.label} ${o.sublabel ?? ''}`);
     }
-    indexRef.current = idx;
+    return idx;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options, refreshTick]);
 
@@ -49,12 +50,9 @@ export function useFlexFilter(
   const results = useMemo(() => {
     const q = query.trim();
     if (!q) return options.slice(0, 50);
-    const idx = indexRef.current;
-    if (!idx) return [];
-    const ids = idx.search(q, { limit: 50 }) as unknown as string[];
+    const ids = index.search(q, { limit: 50 }) as unknown as string[];
     return ids.map((id) => byId.get(id)).filter(Boolean) as SearchOption[];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, options, byId, refreshTick]);
+  }, [query, options, byId, index]);
 
   const reset = useCallback(() => setQuery(''), []);
 

@@ -18,7 +18,7 @@ import { flagPoints,  settlementsFrom } from '../lib/flagging';
 import { useOrgUnitPaths } from '../hooks/useOrgUnits';
 import { useSelectedOrgUnitLayers } from '../hooks/useSelectedOrgUnitLayers';
 import { useSettlementGeoservice } from '../hooks/useSettlementGeoservice';
-import { useUsers } from '../hooks/useUsers';
+import { useMapTeams } from '../hooks/useUsers';
 import { useIsNarrow } from '../hooks/useIsNarrow';
 import { cn } from '../lib/ui';
 
@@ -34,7 +34,12 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
   const { data: index = [] } = useMicroplanIndex();
   const { mapFilters, activeMicroplanIds, setActiveMicroplanIds, basemapId, overlays,
     hiddenCoordinateDims, selectedDimensions, hiddenWeeks, toggleWeek } = useStore();
-  const { data: accessibleUsers = [] } = useUsers();
+  // same cached, org-unit-filtered list the Team picker uses
+  const { users: teams } = useMapTeams(mapFilters.orgUnitId);
+  const selectedUser = useMemo(
+    () => (mapFilters.uploadedById ? teams.find((u) => u.id === mapFilters.uploadedById) : undefined),
+    [teams, mapFilters.uploadedById]
+  );
   // Phone-sized screens get the layer cards collapsed: open, they would cover
   // most of the map they exist to control.
   const isNarrow = useIsNarrow();
@@ -47,19 +52,16 @@ export const MapPage: React.FC<{ program?: string }> = ({ program: programProp }
   // rows by (created/last-updated-by). No selection → no user filtering.
   const userFilter = useMemo(() => {
     if (!mapFilters.uploadedById) return null;
-    const u = accessibleUsers.find((x) => x.id === mapFilters.uploadedById);
-    // fall back to extracting from a "Name (username)" label if needed
-    return u?.username?.toLowerCase() || null;
-  }, [mapFilters.uploadedById, accessibleUsers]);
+    return selectedUser?.username?.toLowerCase() || null;
+  }, [mapFilters.uploadedById, selectedUser]);
 
   // The selected TEAM CODE is the selected user's username — e.g. a user shown
   // as "kabad (DHK-ID)" yields team code "DHK-ID". Preserve original case so it
   // matches teamPlans[].teamCode; matching itself is case-insensitive.
   const selectedTeamCode = useMemo(() => {
     if (!mapFilters.uploadedById) return null;
-    const u = accessibleUsers.find((x) => x.id === mapFilters.uploadedById);
-    return u?.username || null;
-  }, [mapFilters.uploadedById, accessibleUsers]);
+    return selectedUser?.username || null;
+  }, [mapFilters.uploadedById, selectedUser]);
 
   // Descendant-aware org filtering needs the path of each uploaded microplan's
   // org unit (plus the selected unit) - a small, targeted fetch.

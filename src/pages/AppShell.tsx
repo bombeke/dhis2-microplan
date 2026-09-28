@@ -300,7 +300,7 @@ export const AppShell: React.FC = () => {
         >
           <div className="flex min-w-0">
             <TabBar>
-              {primaryNav.map((item) => (
+              {primaryNav.filter((r)=>!(['create','settlements','duplicates'].includes(r.route))).map((item) => (
                 <Tab
                   key={item.route}
                   icon={item.icon}
