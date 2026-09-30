@@ -1,5 +1,5 @@
 {
-  "name": "dhis2-microplan-v2",
+  "name": "dhis2-microplan",
   "version": "1.1.0",
   "description": "DHIS2 outreach microplanning & settlement coverage monitor",
   "license": "Apache-2.0",

@@ -274,7 +274,7 @@ const TEN_MIN = 10 * 60_000;
 
 async function fetchAllOrgUnits(
   engine: ReturnType<typeof useDataEngine>,
-  pageSize = 500
+  pageSize = 200
 ): Promise<FlatOrgUnit[]> {
   const out: FlatOrgUnit[] = [];
   let page = 1;
@@ -486,7 +486,7 @@ export function useOrgUnitPaths(ids: string[]) {
     queryFn: async () => {
       const out = new Map<string, string>();
       // chunk to keep the id:in filter within limits
-      const chunkSize = 200;
+      const chunkSize = 100;
       for (let i = 0; i < unique.length; i += chunkSize) {
         const chunk = unique.slice(i, i + chunkSize);
         const data: any = await engine.query({

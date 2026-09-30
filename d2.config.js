@@ -1,8 +1,8 @@
 /** DHIS2 application manifest. Consumed by @dhis2/cli-app-scripts. */
 const config = {
   type: 'app',
-  name: 'microplanv2',
-  title: 'Outreach Microplan & Coverage v2',
+  name: 'microplan',
+  title: 'Outreach Microplan & Coverage',
   description:
     'Team-by-ward outreach planning, settlement coverage maps, and out-of-bounds data-point flagging.',
 

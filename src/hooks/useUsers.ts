@@ -65,7 +65,7 @@ const underOrgUnit = (u: MapTeam, orgUnitId: string) =>
  */
 async function fetchDataViewUsers(engine: Engine, rootIds: string[]): Promise<MapTeam[]> {
   const byId = new Map<string, MapTeam>();
-  const pageSize = 200;
+  const pageSize = 150;
   const MAX_PAGES = 500; // safety cap, as in fetchAllOrgUnits
   for (const ou of rootIds) {
     for (let page = 1; page <= MAX_PAGES; page++) {
